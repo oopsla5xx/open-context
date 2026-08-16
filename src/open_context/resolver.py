@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
 """
 Context Resolver v0 — Open:Context
 
@@ -15,6 +13,7 @@ Resolution strategy (no LLM, no vectors, no embeddings):
 The resolver is generic — it does NOT contain task-specific logic.
 Resolution is driven entirely by context.yaml metadata.
 """
+from __future__ import annotations
 
 import re
 from pathlib import Path
@@ -63,7 +62,7 @@ STOP_WORDS = {
 
 def load_context(path: "Path | str") -> dict:
     """Load context.yaml from the given path."""
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 

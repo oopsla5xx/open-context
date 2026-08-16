@@ -32,4 +32,5 @@ disable = [
     "invalid-name",            # module-level vars in scripts misidentified as constants
     "too-many-branches",       # schema.py validate() has intentionally many branches
     "too-many-locals",         # validator.py run_phrasing_tests has intentionally many locals
+    "too-many-statements",     # cli.py subcommand handlers are intentionally dense
 ]
