@@ -16,3 +16,13 @@ open-context = "open_context.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pylint.main]
+ignore-paths = ["vendor"]
+
+[tool.pylint.messages_control]
+disable = [
+    "missing-module-docstring",
+    "missing-function-docstring",
+    "missing-class-docstring",
+]

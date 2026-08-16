@@ -4,42 +4,29 @@ UserPromptSubmit hook — resolves the incoming prompt against the project's
 context.yaml and injects matched context as additionalContext.
 
 All errors go to stderr. stdout is either a valid JSON response or empty.
-An empty stdout + exit 0 is a deliberate silent no-op (Q1, Q8).
+An empty stdout + exit 0 is the deliberate silent no-op.
 """
 import json
 import os
 import sys
 from pathlib import Path
 
-# ── Path setup (Q5) ──────────────────────────────────────────────────────────
-plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-if not plugin_root:
-    print(
-        "[open-context] CLAUDE_PLUGIN_ROOT not set — hook not running inside Claude Code plugin",
-        file=sys.stderr,
-    )
-    sys.exit(0)
+sys.path.insert(0, str(Path(__file__).parent))
+from hook_utils import check_plugin_root, read_stdin_json, setup_plugin_path  # noqa: E402
 
-sys.path.insert(0, str(Path(plugin_root) / "src"))
-sys.path.insert(0, str(Path(plugin_root) / "vendor"))
+plugin_root = check_plugin_root("UserPromptSubmit hook")
+setup_plugin_path(plugin_root)
 
 from open_context import load_context, resolve, format_report  # noqa: E402
 
-# ── Constants ────────────────────────────────────────────────────────────────
 MAX_CHARS = 9500
 
-# ── Read stdin ───────────────────────────────────────────────────────────────
-try:
-    data = json.loads(sys.stdin.read())
-except json.JSONDecodeError as exc:
-    print(f"[open-context] Failed to parse hook JSON from stdin: {exc}", file=sys.stderr)
-    sys.exit(0)
-
+data = read_stdin_json()
 prompt = data.get("prompt") or data.get("user_prompt", "")
 cwd = Path(data.get("cwd", "."))
 
-# ── Locate context.yaml (Q2) ─────────────────────────────────────────────────
-context_path: str | None = None
+# ── Locate context.yaml ───────────────────────────────────────────────────────
+context_path = None
 
 env_path = os.environ.get("OPEN_CONTEXT_FILE")
 if env_path:
@@ -50,14 +37,12 @@ if env_path:
             f"[open-context] OPEN_CONTEXT_FILE set but not found: {env_path}",
             file=sys.stderr,
         )
-        # fall through to convention-based search
 
 if not context_path:
-    candidates: list[Path] = [
+    candidates = [
         cwd / ".claude" / "context.yaml",
         cwd / "context.yaml",
     ]
-    # traverse up to git root
     d = cwd.resolve()
     while d != d.parent:
         if (d / ".git").exists():
@@ -71,42 +56,37 @@ if not context_path:
             break
 
 if not context_path:
-    sys.exit(0)  # no context.yaml anywhere — silent no-op
+    sys.exit(0)
 
-# ── Resolve (Q1) ─────────────────────────────────────────────────────────────
+# ── Resolve ───────────────────────────────────────────────────────────────────
 try:
     context = load_context(context_path)
     result = resolve(prompt, context)
-except Exception as exc:
+except Exception as exc:  # pylint: disable=broad-except
     print(f"[open-context] Resolver error: {exc}", file=sys.stderr)
     sys.exit(0)
 
-# Check matched_domains BEFORE calling format_report (Q1 — critical)
 if not result.get("matched_domains"):
-    sys.exit(0)  # silent no-op — stdout must be empty
+    sys.exit(0)
 
-# ── Format + truncate at section boundary (Q4) ───────────────────────────────
+# ── Format + truncate at section boundary ─────────────────────────────────────
 report = format_report(result)
 
 if len(report) > MAX_CHARS:
     truncated = report[:MAX_CHARS]
-    # All section headers start with "\n[" — find last clean section boundary
     last_boundary = truncated.rfind("\n[")
     if last_boundary > 0:
         report = truncated[:last_boundary]
     else:
-        # No section boundary found — fall back to last complete line
         last_newline = truncated.rfind("\n")
         report = truncated[:last_newline] if last_newline > 0 else truncated
-    report += '\n[Context truncated — run /oc-resolve for full output]'
+    report += "\n[Context truncated — run /oc-resolve for full output]"
 
-# ── Emit JSON (Q8) ───────────────────────────────────────────────────────────
-# additionalContext must be nested inside hookSpecificOutput, not top-level.
-output = {
+# ── Emit JSON ─────────────────────────────────────────────────────────────────
+print(json.dumps({
     "hookSpecificOutput": {
         "hookEventName": "UserPromptSubmit",
         "additionalContext": report,
     }
-}
-print(json.dumps(output))
+}))
 sys.exit(0)

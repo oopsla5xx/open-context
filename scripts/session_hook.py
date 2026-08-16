@@ -11,40 +11,30 @@ import os
 import sys
 from pathlib import Path
 
-# ── Path setup ────────────────────────────────────────────────────────────────
-plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-if not plugin_root:
-    print(
-        "[open-context] CLAUDE_PLUGIN_ROOT not set — session hook skipped",
-        file=sys.stderr,
-    )
-    sys.exit(0)
+sys.path.insert(0, str(Path(__file__).parent))
+from hook_utils import check_plugin_root, read_stdin_json  # noqa: E402
 
-# ── Read stdin ────────────────────────────────────────────────────────────────
-try:
-    data = json.loads(sys.stdin.read())
-except json.JSONDecodeError as exc:
-    print(f"[open-context] Failed to parse hook JSON from stdin: {exc}", file=sys.stderr)
-    sys.exit(0)
+check_plugin_root("session hook")
 
+data = read_stdin_json()
 cwd = Path(data.get("cwd", ".")).resolve()
 
 # ── Check for existing settings ───────────────────────────────────────────────
-# 1. Project-scoped settings in this repo
 project_settings = cwd / ".claude" / "oc-settings.yaml"
 
-# 2. Global settings in CLAUDE_PLUGIN_DATA
 plugin_data = os.environ.get("CLAUDE_PLUGIN_DATA", "")
-global_settings = Path(plugin_data) / "open-context" / "settings.json" if plugin_data else None
+global_settings = (
+    Path(plugin_data) / "open-context" / "settings.json" if plugin_data else None
+)
 
 settings_found = project_settings.exists() or (
     global_settings is not None and global_settings.exists()
 )
 
 if settings_found:
-    sys.exit(0)  # configured — silent no-op
+    sys.exit(0)
 
-# 3. Also skip if context.yaml already exists (project was set up manually)
+# Also skip if context.yaml already exists (project was set up manually)
 context_candidates = [
     cwd / ".claude" / "context.yaml",
     cwd / "context.yaml",
@@ -57,7 +47,7 @@ while d != d.parent:
     d = d.parent
 
 if any(c.exists() for c in context_candidates):
-    sys.exit(0)  # has context.yaml — skip wizard
+    sys.exit(0)
 
 # ── Inject wizard trigger ─────────────────────────────────────────────────────
 trigger = (
@@ -72,11 +62,10 @@ trigger = (
     "then generate context.yaml, test files, and run validation automatically."
 )
 
-output = {
+print(json.dumps({
     "hookSpecificOutput": {
         "hookEventName": "SessionStart",
         "additionalContext": trigger,
     }
-}
-print(json.dumps(output))
+}))
 sys.exit(0)
