@@ -1,13 +1,13 @@
 ---
 name: oc-setup
-description: First-run setup wizard for open-context — asks 6 questions about scope, communication language, programming language, framework, architecture, and actors, then automatically generates context.yaml, test phrasing files, and validates in an agentic loop.
+description: First-run setup wizard for open-context — asks up to 7 questions about scope, communication language, programming language, framework, architecture, actors, and optional CI — then generates context.yaml, test phrasing files, validates in an agentic loop, and optionally writes a GitHub Actions workflow.
 ---
 
 You are running the open-context first-run setup wizard. Execute all phases in order without waiting for the user to prompt you between phases. Be concise — summarise what you did after each phase in one line.
 
 ---
 
-## Phase 1 — Wizard (6 questions)
+## Phase 1 — Wizard (up to 7 questions)
 
 Ask each question one at a time. Present options as a numbered list. Wait for the user's answer before asking the next question.
 
@@ -61,6 +61,14 @@ Present options based on the language chosen in Question 2:
 > 5. staff
 > 6. customer
 > 7. Other (specify)
+
+**Question 6 — GitHub Actions CI** *(only ask if scope = `project` from Question 1)*
+> Do you want to add a GitHub Actions workflow to validate `context.yaml` on every PR?
+> It will run `open-context validate --strict` + `open-context architecture validate` automatically.
+> 1. Yes — create `.github/workflows/open-context-validate.yml`
+> 2. No — skip (can add manually later)
+
+If scope = `global`: skip this question silently — CI workflows belong to a repo, not a global config.
 
 ---
 
@@ -261,6 +269,75 @@ If domains still fail after 2 iterations:
 
 ---
 
+## Phase 6 — Generate CI workflow *(only if Question 6 = Yes)*
+
+Create `.github/workflows/open-context-validate.yml` using the paths already known from earlier phases.
+
+### Path resolution
+
+| What | Value |
+|------|-------|
+| `<context-path>` | `.claude/context.yaml` (scope = project) |
+| `<tests-path>` | `.claude/tests/` |
+| `<source-dir>` | Inferred from Q3 language: Ruby → `app/**` · Python/TS/JS → `src/**` · Go → `**/*.go` · other → `src/**` |
+
+### Workflow template
+
+```yaml
+name: open-context validate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '<context-path>'
+      - '<source-dir>'
+  pull_request:
+    paths:
+      - '<context-path>'
+      - '<source-dir>'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install open-context
+        run: pip install git+https://github.com/oopsla5xx/open-context.git@main
+
+      - name: Validate context.yaml
+        run: |
+          open-context validate \
+            --context <context-path> \
+            --tests   <tests-path> \
+            --repo    . \
+            --strict
+
+      - name: Validate architecture
+        run: |
+          open-context architecture validate \
+            --repo .
+```
+
+### Rules (hardcoded — do not ask the user)
+
+- `--strict` is always on: CI must enforce missing paths and MEDIUM/HIGH phrasing risk as failures.
+- Write the file only — do not `git add`, do not commit, do not push. Print a note telling the user to review and commit manually.
+
+### After writing the file, print
+
+```
+CI workflow written → .github/workflows/open-context-validate.yml
+Review before committing — this triggers real CI on every PR.
+```
+
+---
+
 ## Final report
 
 After all phases complete, print a summary:
@@ -269,8 +346,10 @@ open-context setup complete
 
 Settings : <scope> → <path>
 Context  : .claude/context.yaml (<N> domains, <M> rules)
-Tests    : .claude/tests/ (<N> files)
+Tests    : .claude/tests/ (<N> files, <M> phrasings)
 Validate : <pass/partial> — <X>/<N> domains above 70% coverage
+CI       : <.github/workflows/open-context-validate.yml written (review + commit to activate)>
+           OR <skipped>
 
 Next: run /oc-validate any time context.yaml changes.
 Commit context.yaml and tests/ alongside the code they describe.
