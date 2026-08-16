@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""
+Open:Context CLI
+
+Commands:
+  resolve <task> --context PATH [--json]
+      Route a task description to the relevant context layers.
+
+  validate --context PATH [--tests PATH] [--json]
+      Run phrasing coverage + amplification safety check.
+
+  architecture validate [--repo PATH] [--path DIR] [--json]
+      Run 6 HMVC architecture compliance rules against the codebase.
+"""
+
+import sys
+import json
+import argparse
+from pathlib import Path
+
+from .resolver import load_context, resolve, format_report
+from .validator import run_phrasing_tests, run_amplification_checks, run_arch_validate
+from .schema import validate_context
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# resolve
+# ─────────────────────────────────────────────────────────────────────────────
+
+def cmd_resolve(args):
+    ctx = _load_and_validate(args.context)
+    result = resolve(" ".join(args.task), context=ctx)
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
+    else:
+        print(format_report(result))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# validate (phrasing coverage + amplification)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def cmd_validate(args):
+    ctx = _load_and_validate(args.context)
+    context_path = Path(args.context)
+    tests_dir = Path(args.tests) if args.tests else context_path.parent / "tests"
+
+    sep = "─" * 72
+    phrasing_results = run_phrasing_tests(ctx, tests_dir)
+    by_domain = phrasing_results["by_domain"]
+
+    print(sep)
+    print("open-context validate — Phrasing Coverage + Amplification Safety")
+    print(sep)
+
+    print(f"\n{'Domain':<32} {'Tested':>6} {'Correct':>7} {'Coverage':>9} {'Risk':<8}")
+    print("-" * 64)
+    for domain, r in by_domain.items():
+        if r["tested"] == 0:
+            print(f"  {domain:<30} {'—':>6} {'—':>7} {'UNTESTED':>9} {'—':<8}")
+        else:
+            print(
+                f"  {domain:<30} {r['tested']:>6} {r['correct']:>7} "
+                f"{r['pct']:>8.0f}% {r['risk']:<8}"
+            )
+    print("-" * 64)
+    total = phrasing_results
+    print(
+        f"  {'TOTAL':<30} {total['total_tested']:>6} {total['total_correct']:>7} "
+        f"{total['total_pct']:>8.0f}%"
+    )
+
+    all_failures = [f for r in by_domain.values() for f in r["failures"]]
+    if all_failures:
+        print(f"\n[FAILURES — {len(all_failures)} total]")
+        for f in all_failures:
+            print(f"  FAIL  \"{f['phrase']}\"")
+            print(f"        expected: {f['expected']}")
+            print(f"        got:      {f['got'] or '(no domain matched)'}")
+    else:
+        print("\n[FAILURES] none — all phrasings routed correctly")
+
+    print(f"\n{sep}")
+    print("Amplification Safety Check")
+    print(sep)
+    ampl_findings = run_amplification_checks(ctx)
+
+    if not ampl_findings:
+        print("  No amplification issues detected.")
+    else:
+        warnings = [f for f in ampl_findings if f["level"] == "WARNING"]
+        notes = [f for f in ampl_findings if f["level"] == "NOTE"]
+        if warnings:
+            print(f"\n  [{len(warnings)} WARNING(s)]")
+            for f in warnings:
+                print(f"  ⚠  {f['domain']} | root='{f['root_token']}' | score={f['score']}")
+                print(f"     {f['detail']}")
+        if notes:
+            print(f"\n  [{len(notes)} NOTE(s)]")
+            for f in notes:
+                print(f"  ·  {f['domain']} | root='{f['root_token']}' | score={f['score']}")
+                print(f"     {f['detail']}")
+
+    print(f"\n{sep}")
+    pass_count = total["total_correct"]
+    warn_count = len([f for f in ampl_findings if f["level"] == "WARNING"])
+    print(
+        f"RESULT  {pass_count}/{total['total_tested']} phrasings PASS "
+        f"({total['total_pct']:.0f}%)  |  {warn_count} amplification warning(s)"
+    )
+    print(sep)
+
+    if args.json:
+        print(json.dumps({
+            "phrasing_results": phrasing_results,
+            "amplification_findings": ampl_findings,
+        }, indent=2, default=str))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# architecture validate
+# ─────────────────────────────────────────────────────────────────────────────
+
+def cmd_arch_validate(args):
+    base = Path(args.repo).resolve() if args.repo else Path.cwd()
+    path_filter = Path(args.path).resolve() if args.path else None
+    sep = "─" * 72
+
+    print(sep)
+    print("open-context architecture validate")
+    print(f"Scope: {path_filter or base}")
+    print(sep)
+
+    report = run_arch_validate(base, path_filter)
+    total_violations = report["total_violations"]
+    total_files_checked = report["total_files_checked"]
+
+    print()
+    for result in report["results"]:
+        rule = result["rule"]
+        vcount = sum(len(v["hits"]) for v in result["violations"])
+        status = "✓" if vcount == 0 else "✗"
+        print(f"  {status} [{rule['id']}] {rule['name']}")
+        if vcount > 0:
+            for rv in result["violations"]:
+                for hit in rv["hits"]:
+                    loc = f":{hit['line']}" if hit["line"] else ""
+                    print(f"      File: {rv['file']}{loc}")
+                    if hit["code"]:
+                        print(f"      Code: {hit['code'].strip()}")
+                    print(f"      Issue: {hit['detail']}")
+                    print()
+
+    print(sep)
+    checked_label = f"{total_files_checked} files checked"
+    if total_violations == 0:
+        print(f"RESULT  ✓ All rules PASS  ({checked_label})")
+    else:
+        print(f"RESULT  ✗ {total_violations} violation(s) found  ({checked_label})")
+    print(sep)
+
+    if args.json:
+        print(json.dumps({
+            "scope": report["scope"],
+            "total_violations": total_violations,
+            "results": [
+                {
+                    "id": r["rule"]["id"],
+                    "name": r["rule"]["name"],
+                    "files_checked": r["files_checked"],
+                    "violations": r["violations"],
+                }
+                for r in report["results"]
+            ],
+        }, indent=2, default=str))
+
+    if total_violations > 0:
+        sys.exit(1)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_and_validate(context_path: str) -> dict:
+    try:
+        ctx = load_context(context_path)
+    except FileNotFoundError:
+        print(f"error: context file not found: {context_path}", file=sys.stderr)
+        sys.exit(1)
+    errors = validate_context(ctx)
+    if errors:
+        print("error: invalid context.yaml:", file=sys.stderr)
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+        sys.exit(1)
+    return ctx
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Argument parser + entry point
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="open-context",
+        description="Open:Context CLI — context resolver + architecture validator for Rails HMVC projects",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # resolve
+    p_resolve = sub.add_parser("resolve", help="Resolve a task to relevant context")
+    p_resolve.add_argument("task", nargs="+", help="Task description")
+    p_resolve.add_argument("--context", metavar="PATH", required=True,
+                           help="Path to context.yaml")
+    p_resolve.add_argument("--json", action="store_true", help="Output raw JSON")
+    p_resolve.set_defaults(func=cmd_resolve)
+
+    # validate (phrasing coverage)
+    p_validate = sub.add_parser("validate", help="Run phrasing coverage + amplification safety check")
+    p_validate.add_argument("--context", metavar="PATH", required=True,
+                            help="Path to context.yaml")
+    p_validate.add_argument("--tests", metavar="PATH", default=None,
+                            help="Path to tests directory (default: <context-dir>/tests/)")
+    p_validate.add_argument("--json", action="store_true", help="Also print JSON results")
+    p_validate.set_defaults(func=cmd_validate)
+
+    # architecture
+    p_arch = sub.add_parser("architecture", help="Architecture compliance checks")
+    arch_sub = p_arch.add_subparsers(dest="arch_command", required=True)
+
+    p_arch_val = arch_sub.add_parser("validate", help="Run 6 HMVC architecture rules against codebase")
+    p_arch_val.add_argument("--repo", metavar="PATH", default=None,
+                            help="Rails repo root to scan (default: current directory)")
+    p_arch_val.add_argument("--path", metavar="DIR", default=None,
+                            help="Limit scan to this subdirectory")
+    p_arch_val.add_argument("--json", action="store_true", help="Also print JSON results")
+    p_arch_val.set_defaults(func=cmd_arch_validate)
+
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

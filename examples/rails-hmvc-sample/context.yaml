@@ -1,0 +1,292 @@
+---
+# Open:Context — Example Context Model
+# Domain: Library Management API (generic Rails HMVC sample)
+# Purpose: Demonstrates the context.yaml schema for open-source users.
+# Not real production data — replace with your own project details.
+
+# ══════════════════════════════════════════════════════════════════════════════
+# L1 — STACK
+# ══════════════════════════════════════════════════════════════════════════════
+
+project:
+  name: library-api
+  language: ruby
+  language_version: "3.2.0"
+  framework: rails
+  framework_version: "7.1.0"
+  api_mode: true
+  api_versioning: versionist  # all routes under /v1/
+  default_actor: patron       # fallback when no domain matched
+
+# ══════════════════════════════════════════════════════════════════════════════
+# L2 — ARCHITECTURE
+# ══════════════════════════════════════════════════════════════════════════════
+
+architecture:
+  name: HMVC
+  flow: [controller, operation, form, model, serializer]
+
+components:
+  # ── controller ──────────────────────────────────────────────────────────────
+  controller:
+    responsibility:
+      - http_request_handling
+      - parameter_extraction
+      - operation_delegation
+      - response_rendering
+    allowed_dependencies:
+      - operation
+      - serializer
+      - policy
+    forbidden_dependencies:
+      - model     # no direct AR queries in actions
+      - form      # form instantiation belongs in operation
+    patterns:
+      - id: one_operation_per_action
+        description: Each action instantiates exactly one Operation, calls .call, then renders
+      - id: render_via_helper
+        description: "Use render_json / render_error, never render json: directly"
+
+  # ── operation ───────────────────────────────────────────────────────────────
+  operation:
+    responsibility:
+      - business_workflow_orchestration
+      - step_sequencing
+      - result_exposure
+    allowed_dependencies:
+      - form
+      - model
+      - mailer
+      - job
+    forbidden_dependencies:
+      - serializer
+      - controller
+    patterns:
+      - id: step_method_structure
+        description: >
+          call method contains ONLY step_* method calls.
+          All logic lives in private step_* methods.
+      - id: validate_before_mutate
+        description: Form validation (form.valid!) must happen before any state mutation
+      - id: expose_via_attr_reader
+        description: Results exposed through attr_reader, not return values
+      - id: use_application_error
+        description: Signal failures by raising ApplicationError::* subclasses (your project's custom exception hierarchy)
+
+  # ── form ────────────────────────────────────────────────────────────────────
+  form:
+    responsibility:
+      - input_validation
+      - attribute_whitelisting
+    allowed_dependencies:
+      - model   # read-only lookups for cross-field validation only
+    forbidden_dependencies:
+      - operation
+      - serializer
+      - mailer
+      - job
+    patterns:
+      - id: activemodel_only
+        description: Inherits ApplicationForm (ActiveModel::Model + Attributes + Validations)
+      - id: validate_naming
+        description: Custom validations named validate :must_{condition}
+      - id: no_side_effects
+        description: Forms must not save records, send mail, or enqueue jobs
+
+  # ── model ───────────────────────────────────────────────────────────────────
+  model:
+    responsibility:
+      - data_persistence
+      - associations
+      - scopes
+      - domain_state_predicates
+    location: app/models/
+    allowed_dependencies:
+      - model
+    forbidden_dependencies:
+      - operation
+      - form
+      - serializer
+      - controller
+    patterns:
+      - id: no_workflow_logic
+        description: Models must not orchestrate multi-step workflows
+
+  # ── serializer ──────────────────────────────────────────────────────────────
+  serializer:
+    responsibility:
+      - json_response_formatting
+    allowed_dependencies:
+      - model
+    forbidden_dependencies:
+      - operation
+      - form
+      - controller
+
+# ── file patterns ───────────────────────────────────────────────────────────────
+files:
+  controller:
+    patterns: [app/controllers/v1/**/*_controller.rb]
+    naming: "{resource}_controller.rb"
+    class_naming: "V1::{Namespace}::{Resource}Controller"
+
+  operation:
+    patterns: [app/operations/v1/**/*_operation.rb]
+    naming: "{action}_operation.rb"
+    class_naming: "V1::{Namespace}::{Resource}::{Action}Operation"
+    actions: [index, show, create, update, destroy]
+
+  form:
+    patterns: [app/forms/v1/**/*_form.rb]
+    naming: "{action}_form.rb"
+    class_naming: "V1::{Namespace}::{Resource}::{Action}Form"
+
+  serializer:
+    patterns: [app/serializers/v1/**/*_serializer.rb]
+    naming: "{type}_serializer.rb"
+    class_naming: "V1::{Namespace}::{Resource}::{Type}Serializer"
+    common_types: [basic, simple, detail, meta, list]
+
+  model:
+    patterns: [app/models/**/*.rb]
+
+naming_conventions:
+  namespace_from_path: true
+  resource_pluralization: true
+  operation_uses_singular_action: true
+  nested_namespace_separator: "/"
+
+# ── actors ──────────────────────────────────────────────────────────────────────
+actors:
+  librarian:
+    description: Library staff with admin access — manages catalog, members, and policies
+    base_controller: LibrarianController
+    auth_method: authenticate_librarian!
+    context_keys: [current_librarian]
+
+  patron:
+    description: Authenticated library member — can borrow, return, and renew books
+    base_controller: PatronController
+    auth_method: authenticate_patron!
+    context_keys: [current_patron]
+
+  unauthenticated:
+    description: Public access — catalog search only, no borrowing
+    base_controller: ApplicationController
+
+# ══════════════════════════════════════════════════════════════════════════════
+# L3 — DOMAINS
+# ══════════════════════════════════════════════════════════════════════════════
+
+domains:
+  - name: catalog_management
+    coverage_level: routing_only
+    keywords: [book, author, genre, isbn, catalog, title, publisher, browse]
+    typical_actors: [librarian, patron, unauthenticated]
+
+  - name: borrowing_management
+    coverage_level: file_indexed
+    keywords: [borrow, checkout, return, renew, loan, overdue, due_date, reserve, hold]
+    typical_actors: [patron]
+    extra_components: [record_lock]
+    extra_component_reasons:
+      record_lock: >
+        Borrowing operations decrement physical copy inventory.
+        rule-06: Use AR with_lock (advisory lock) on the Book record to prevent race
+        conditions when multiple patrons attempt to check out the last available copy.
+        Lock must wrap both the availability check and the copy_count decrement.
+    related_components:
+      - app/controllers/v1/patrons/checkouts_controller.rb
+      - app/operations/v1/patrons/checkouts/
+      - app/controllers/v1/patrons/returns_controller.rb
+      - app/operations/v1/patrons/returns/
+      - app/models/loan.rb
+      - app/models/book.rb
+    subtypes:
+      - name: checkout_copy
+        keywords: [borrow, checkout, new_loan]
+        related_components:
+          - app/controllers/v1/patrons/checkouts_controller.rb
+          - app/operations/v1/patrons/checkouts/create_operation.rb
+          - app/forms/v1/patrons/checkouts/create_form.rb
+        patterns:
+          - id: atomic_copy_decrement
+            description: >
+              Check book.copy_count > 0 INSIDE with_lock block.
+              Decrement copy_count and create Loan record in a single transaction.
+              Never read copy_count outside the lock — stale reads cause oversell.
+      - name: renewal_copy
+        keywords: [renew, renewal, extend]
+        related_components:
+          - app/controllers/v1/patrons/renewals_controller.rb
+          - app/operations/v1/patrons/renewals/create_operation.rb
+          - app/forms/v1/patrons/renewals/create_form.rb
+
+  - name: member_management
+    coverage_level: file_indexed
+    keywords: [member, patron, register, account, library_card, search_member]
+    typical_actors: [librarian]
+    related_components:
+      - app/controllers/v1/librarians/patrons_controller.rb
+      - app/operations/v1/librarians/patrons/
+      - app/forms/v1/librarians/patrons/
+      - app/models/patron.rb
+    subtypes:
+      - name: member_search
+        keywords: [search_member, find_patron, email_search]
+        related_components:
+          - app/controllers/v1/librarians/patrons/searches_controller.rb
+          - app/operations/v1/librarians/patrons/searches/index_operation.rb
+        patterns:
+          - id: paginate_member_list
+            description: >
+              Member search endpoints return open-ended sets.
+              Always paginate with .page(params[:page]).
+
+# ══════════════════════════════════════════════════════════════════════════════
+# L4 — INVARIANTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+rules:
+  - id: rule-01-no-business-logic-in-controller
+    description: Controllers must not contain business logic. All logic delegated to Operation.
+    applies_to: [controller]
+    severity: critical
+
+  - id: rule-02-one-operation-per-action
+    description: Each controller action must instantiate exactly one Operation.
+    applies_to: [controller]
+    severity: critical
+
+  - id: rule-03-step-method-structure
+    description: >
+      The call method in an Operation must contain ONLY step_* method calls.
+      Implementation goes in private step_* methods.
+    applies_to: [operation]
+    severity: critical
+
+  - id: rule-04-validate-before-mutate
+    description: >
+      Operation must call Form.valid! before any write to DB, mailer, or job.
+    applies_to: [operation]
+    severity: critical
+
+  - id: rule-05-form-validation-only
+    description: Forms must only validate. No saves, no email, no jobs.
+    applies_to: [form]
+    severity: critical
+
+  - id: rule-06-borrowing-with-lock
+    description: >
+      Any operation that checks out or returns books MUST use AR with_lock on the Book record
+      before reading copy_count and performing the decrement/increment.
+      Prevents race conditions when multiple patrons target the same book simultaneously.
+    applies_to: [operation]
+    domain: [borrowing_management]
+    severity: critical
+    guidance: |
+      Book.find(book_id).with_lock do
+        form.valid!               # validate INSIDE the lock (TOCTOU prevention)
+        book.decrement!(:copy_count)
+        Loan.create!(patron: current_patron, book:, due_date:)
+      end

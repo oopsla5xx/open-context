@@ -1,0 +1,8 @@
+# Format: phrasing|expected_domain
+# Note: phrasings need ≥2 catalog keywords to clear the routing threshold.
+# Single-word "book" phrases score only 1 and fall back to generic HMVC path.
+list books by author|catalog_management
+search catalog by genre|catalog_management
+browse book isbn|catalog_management
+show book title|catalog_management
+find book in catalog|catalog_management

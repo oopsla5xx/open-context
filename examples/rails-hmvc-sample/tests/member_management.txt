@@ -1,0 +1,6 @@
+# Format: phrasing|expected_domain
+register new library member|member_management
+search member by email|member_management
+search patron account|member_management
+update patron library card|member_management
+view patron account details|member_management

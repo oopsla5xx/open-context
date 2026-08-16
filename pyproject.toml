@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "open-context"
+version = "0.1.0"
+description = "Zero-LLM context resolver for Rails HMVC codebases"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+open-context = "open_context.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,14 @@
+{
+  "name": "open-context",
+  "description": "Marketplace for the open-context plugin: zero-LLM context resolver for Rails HMVC codebases.",
+  "owner": {
+    "name": "oopsla5xx"
+  },
+  "plugins": [
+    {
+      "name": "open-context",
+      "source": ".",
+      "description": "Automatically injects the right context into every Claude Code prompt — domains, component chain, files, and architecture rules — based on your project's context.yaml. No manual command needed."
+    }
+  ]
+}

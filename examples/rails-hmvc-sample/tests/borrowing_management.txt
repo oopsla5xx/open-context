@@ -1,0 +1,11 @@
+# Format: phrasing|expected_domain
+# Note: phrasings need ≥2 borrowing keywords to clear the routing threshold.
+# Natural-language phrases mixing domains (e.g. "borrow a book") score 1 each
+# domain and fall back to generic HMVC path — this is expected resolver behavior.
+renew book loan|borrowing_management
+checkout overdue loan|borrowing_management
+return borrowed book|borrowing_management
+patron checkout renewal|borrowing_management
+extend due date loan|borrowing_management
+reserve book and hold|borrowing_management
+loan checkout status|borrowing_management
