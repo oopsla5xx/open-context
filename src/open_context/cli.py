@@ -135,7 +135,7 @@ def cmd_validate(args):
         )
 
         if file_check["total_missing"] > 0:
-            print(f"\n  Missing paths:")
+            print("\n  Missing paths:")
             for domain, r in file_check["by_domain"].items():
                 for p in r["missing"]:
                     print(f"    [{domain}] {p} — not found")
