@@ -1,7 +1,7 @@
 """
-Integration tests for resolve_hook.py.
+Integration tests for resolve_hook.py and session_hook.py.
 
-Runs the hook as a real subprocess — no mocking of the resolver.
+Runs hooks as real subprocesses — no mocking of the resolver.
 All tests assert stdout/stderr boundaries and JSON structure exactly,
 because the silent failure modes (wrong nesting, stdout pollution) are
 invisible without explicit assertions.
@@ -23,6 +23,7 @@ import pytest
 # ── Paths ─────────────────────────────────────────────────────────────────────
 PLUGIN_ROOT = Path(__file__).parent.parent.resolve()
 HOOK_SCRIPT = PLUGIN_ROOT / "scripts" / "resolve_hook.py"
+SESSION_HOOK_SCRIPT = PLUGIN_ROOT / "scripts" / "session_hook.py"
 SAMPLE_CONTEXT = (
     Path(__file__).parent.parent
     / "examples"
@@ -362,4 +363,164 @@ def test_env_var_wrong_path(tmp_path):
     # stdout must be empty (no fallback context.yaml in tmp_path either)
     assert stdout == b"", (
         f"Expected empty stdout when no context.yaml found, got: {stdout[:200]}"
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# session_hook.py tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_session_hook(
+    cwd: str | None = None,
+    env_overrides: dict | None = None,
+) -> tuple[bytes, bytes, int]:
+    """Run session_hook.py as a subprocess, return (stdout, stderr, returncode)."""
+    if cwd is None:
+        cwd = str(PLUGIN_ROOT / "tests")  # no context.yaml or settings here
+
+    stdin_data = json.dumps({
+        "cwd": cwd,
+        "hook_event_name": "SessionStart",
+        "session_id": "test-session",
+    }).encode()
+
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(PLUGIN_ROOT)
+    env.pop("CLAUDE_PLUGIN_DATA", None)  # start clean — no global settings
+    if env_overrides:
+        for k, v in env_overrides.items():
+            if v is None:
+                env.pop(k, None)
+            else:
+                env[k] = v
+
+    result = subprocess.run(
+        [PYTHON, str(SESSION_HOOK_SCRIPT)],
+        input=stdin_data,
+        capture_output=True,
+        env=env,
+    )
+    return result.stdout, result.stderr, result.returncode
+
+
+# ── S1: no config, no context.yaml → wizard trigger injected ─────────────────
+def test_session_no_config_injects_wizard(tmp_path):
+    """
+    First-run: no settings file and no context.yaml anywhere under cwd.
+    Hook must output JSON with the wizard trigger in additionalContext.
+    """
+    stdout, stderr, code = run_session_hook(cwd=str(tmp_path))
+    assert code == 0
+    assert stdout != b"", "Expected wizard trigger on stdout for first-run project"
+    assert stderr == b""
+
+    parsed = json.loads(stdout)
+    hs = parsed.get("hookSpecificOutput", {})
+    ctx = hs.get("additionalContext", "")
+    assert "oc-setup" in ctx, "Wizard trigger must mention /oc-setup"
+    assert "Scope" in ctx or "scope" in ctx, "Wizard trigger must include first question"
+
+
+# ── S2: project settings exist → silent no-op ────────────────────────────────
+def test_session_project_settings_no_op(tmp_path):
+    """
+    When .claude/oc-settings.yaml exists in cwd, hook must exit silently —
+    setup has already been completed for this project.
+    """
+    settings_dir = tmp_path / ".claude"
+    settings_dir.mkdir()
+    (settings_dir / "oc-settings.yaml").write_text("scope: project\nlanguage: ruby\n")
+
+    stdout, stderr, code = run_session_hook(cwd=str(tmp_path))
+    assert code == 0
+    assert stdout == b"", (
+        f"stdout must be empty when project settings exist, got: {stdout[:200]}"
+    )
+    assert stderr == b""
+
+
+# ── S3: global settings exist → silent no-op ─────────────────────────────────
+def test_session_global_settings_no_op(tmp_path):
+    """
+    When CLAUDE_PLUGIN_DATA/open-context/settings.json exists,
+    hook must exit silently regardless of project state.
+    """
+    global_dir = tmp_path / "plugin_data" / "open-context"
+    global_dir.mkdir(parents=True)
+    (global_dir / "settings.json").write_text('{"scope":"global","language":"ruby"}')
+
+    fresh_project = tmp_path / "project"
+    fresh_project.mkdir()
+
+    stdout, stderr, code = run_session_hook(
+        cwd=str(fresh_project),
+        env_overrides={"CLAUDE_PLUGIN_DATA": str(tmp_path / "plugin_data")},
+    )
+    assert code == 0
+    assert stdout == b"", (
+        f"stdout must be empty when global settings exist, got: {stdout[:200]}"
+    )
+    assert stderr == b""
+
+
+# ── S4: context.yaml exists → silent no-op ───────────────────────────────────
+def test_session_context_yaml_no_op(tmp_path):
+    """
+    When context.yaml exists in cwd (manual setup), hook must exit silently
+    even if no oc-settings.yaml is present.
+    """
+    (tmp_path / "context.yaml").write_text("project:\n  name: test\n")
+
+    stdout, stderr, code = run_session_hook(cwd=str(tmp_path))
+    assert code == 0
+    assert stdout == b"", (
+        f"stdout must be empty when context.yaml already exists, got: {stdout[:200]}"
+    )
+    assert stderr == b""
+
+
+# ── S5: CLAUDE_PLUGIN_ROOT missing → stderr only ─────────────────────────────
+def test_session_missing_plugin_root(tmp_path):
+    """
+    When CLAUDE_PLUGIN_ROOT is not set, session hook must write to stderr only —
+    stdout must remain empty and exit code must be 0.
+    """
+    stdout, stderr, code = run_session_hook(
+        cwd=str(tmp_path),
+        env_overrides={"CLAUDE_PLUGIN_ROOT": None},
+    )
+    assert code == 0
+    assert stdout == b"", (
+        f"stdout must be empty when CLAUDE_PLUGIN_ROOT is missing, got: {stdout[:200]}"
+    )
+    assert b"CLAUDE_PLUGIN_ROOT" in stderr, (
+        f"Expected CLAUDE_PLUGIN_ROOT mention in stderr, got: {stderr}"
+    )
+    assert b"Traceback" not in stdout
+    assert b"Traceback" not in stderr
+
+
+# ── S6: wizard output has correct JSON nesting ───────────────────────────────
+def test_session_json_nesting_correct(tmp_path):
+    """
+    Wizard trigger must be nested as hookSpecificOutput.additionalContext
+    with hookEventName == "SessionStart" — not at top level.
+
+    Wrong nesting causes Claude Code to silently ignore the trigger.
+    """
+    stdout, stderr, code = run_session_hook(cwd=str(tmp_path))
+    assert code == 0
+    assert stdout != b"", "Expected JSON output for first-run project"
+
+    parsed = json.loads(stdout)
+
+    assert "additionalContext" not in parsed, (
+        "additionalContext must NOT be at top level"
+    )
+    assert "hookSpecificOutput" in parsed, "hookSpecificOutput missing from output"
+
+    hs = parsed["hookSpecificOutput"]
+    assert "additionalContext" in hs, "additionalContext missing from hookSpecificOutput"
+    assert hs.get("hookEventName") == "SessionStart", (
+        f"hookEventName must be 'SessionStart', got: {hs.get('hookEventName')!r}"
     )
