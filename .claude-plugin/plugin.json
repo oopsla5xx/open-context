@@ -1,9 +1,8 @@
 {
   "name": "open-context",
   "displayName": "Open:Context",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Resolves tasks to minimal relevant project context — architecture rules, patterns, files — instead of loading full docs every time.",
   "license": "Apache-2.0",
-  "hooks": "./hooks/hooks.json",
   "skills": "./.claude/skills"
 }
