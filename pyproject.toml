@@ -25,4 +25,7 @@ disable = [
     "missing-module-docstring",
     "missing-function-docstring",
     "missing-class-docstring",
+    "wrong-import-position",   # hook scripts must insert sys.path before imports
+    "invalid-name",            # module-level vars in scripts misidentified as constants
+    "too-many-branches",       # schema.py validate() has intentionally many branches
 ]
