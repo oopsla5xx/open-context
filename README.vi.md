@@ -71,7 +71,27 @@ Task không match domain nào (ví dụ "giải thích lỗi này") → hook tho
 /plugin install open-context@open-context
 ```
 
-Lần đầu mở project sau khi cài, plugin tự phát hiện chưa có config và khởi động setup wizard — hỏi 5 câu (scope, ngôn ngữ, framework, architecture pattern, actor roles), rồi tự sinh `context.yaml`, test phrasing file, và validate trong một agentic loop. Không cần gõ thêm lệnh nào.
+Lần đầu mở project sau khi cài, plugin tự phát hiện chưa có config và khởi động setup wizard — hỏi 6 câu (scope, ngôn ngữ giao tiếp, ngôn ngữ lập trình, framework, architecture pattern, actor roles), rồi tự sinh `context.yaml`, test phrasing file, và validate trong một agentic loop. Không cần gõ thêm lệnh nào.
+
+**Gỡ cài đặt:**
+
+```bash
+/plugin uninstall open-context@open-context
+/plugin marketplace remove open-context
+```
+
+**Cài lại từ đầu:**
+
+```bash
+/plugin marketplace add oopsla5xx/open-context
+/plugin install open-context@open-context
+```
+
+**Cập nhật lên phiên bản mới nhất:**
+
+```bash
+/plugin update open-context@open-context
+```
 
 > [!IMPORTANT]
 > Tất cả các số liệu benchmark trong `docs/open-context-v0-architecture.md` (giảm context, tuân thủ architecture, chất lượng implementation) được đo trên Context Model **viết tay**. Output của `/oc-setup` chỉ được validate tự động về routing — nội dung domain/pattern/constraint *chưa* được benchmark riêng so với bản viết tay, đặc biệt với các scoping rule liên quan đến bảo mật. Hãy review file được sinh trước khi dùng trong môi trường production.

@@ -71,7 +71,27 @@ Task matches no domain (e.g. "explain this error") → hook exits silently, noth
 /plugin install open-context@open-context
 ```
 
-First time you open a project after install, the plugin detects that no configuration exists and starts the setup wizard automatically — asks 5 questions (scope, language, framework, architecture pattern, actor roles), then generates `context.yaml`, test phrasing files, and validates everything in one agentic loop. Nothing to run manually.
+First time you open a project after install, the plugin detects that no configuration exists and starts the setup wizard automatically — asks 6 questions (scope, communication language, programming language, framework, architecture pattern, actor roles), then generates `context.yaml`, test phrasing files, and validates everything in one agentic loop. Nothing to run manually.
+
+**Uninstall:**
+
+```bash
+/plugin uninstall open-context@open-context
+/plugin marketplace remove open-context
+```
+
+**Reinstall from scratch:**
+
+```bash
+/plugin marketplace add oopsla5xx/open-context
+/plugin install open-context@open-context
+```
+
+**Update to latest version:**
+
+```bash
+/plugin update open-context@open-context
+```
 
 > [!IMPORTANT]
 > All benchmark numbers referenced in `docs/open-context-v0-architecture.md` (context reduction, architecture compliance, implementation quality) were measured against a **hand-written** Context Model. `/oc-setup`'s generated output passes automated routing validation, but its domain/pattern/constraint *content* has not been separately benchmarked against hand-written equivalents — especially for security-sensitive scoping rules. Review generated files before relying on them in production.
