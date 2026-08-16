@@ -81,10 +81,11 @@ if len(report) > MAX_CHARS:
         report = truncated[:last_newline] if last_newline > 0 else truncated
     report += "\n[Context truncated — run /oc-resolve for full output]"
 
-# ── Token savings stats ───────────────────────────────────────────────────────
+# ── Token savings stats (systemMessage — visible in UI, not passed to model) ──
 def _kb(n: int) -> str:
     return f"{n / 1024:.1f} KB"
 
+system_message = None
 try:
     full_result = resolve(prompt, context, include_all_domains=True)
     full_chars = len(format_report(full_result))
@@ -94,18 +95,22 @@ try:
     # so it can marginally exceed full_chars. max(0, ...) guards the display.
     if full_chars > 0:
         savings_pct = max(0, int((full_chars - injected_chars) / full_chars * 100))
-        report += (
-            f"\n[open-context] {savings_pct}% token reduction"
+        system_message = (
+            f"[open-context] {savings_pct}% token reduction"
             f" ({_kb(injected_chars)} injected vs {_kb(full_chars)} full context)"
         )
 except Exception as exc:  # pylint: disable=broad-except
     print(f"[open-context] stats error (non-fatal): {type(exc).__name__}: {exc}", file=sys.stderr)
 
 # ── Emit JSON ─────────────────────────────────────────────────────────────────
-print(json.dumps({
+output: dict = {
     "hookSpecificOutput": {
         "hookEventName": "UserPromptSubmit",
         "additionalContext": report,
     }
-}))
+}
+if system_message:
+    output["systemMessage"] = system_message
+
+print(json.dumps(output))
 sys.exit(0)

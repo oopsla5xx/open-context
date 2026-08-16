@@ -318,22 +318,15 @@ def test_truncation_boundary(tmp_path):
         last_line = before_truncation.rstrip("\n").rsplit("\n", 1)[-1]
         assert len(last_line) > 0, "Empty last line before truncation notice"
 
-    # Output must not exceed limit + truncation message overhead + stats line (~80 chars)
-    assert len(ctx_text) <= 9500 + 100 + 80, (
+    # Output must not exceed limit + truncation message overhead
+    assert len(ctx_text) <= 9500 + 100, (
         f"Output exceeds MAX_CHARS even after truncation: {len(ctx_text)}"
     )
 
-    # Stats line must be the very last line even when truncation fired.
-    # Stats are appended after truncation; this guards against any refactor
-    # that accidentally swaps that ordering.
-    if "[Context truncated" in ctx_text:
-        last_line = ctx_text.strip().split("\n")[-1]
-        assert re.match(
-            r"\[open-context\] \d+% token reduction \(\d+\.\d+ KB injected vs \d+\.\d+ KB full context\)$",
-            last_line,
-        ), (
-            f"Stats line must be last even after truncation, got: {last_line!r}"
-        )
+    # Stats are in systemMessage (not additionalContext) — verify no bleed
+    assert "[open-context]" not in ctx_text, (
+        "Stats must not appear in additionalContext — they belong in systemMessage"
+    )
 
 
 # ── Test 5: CLAUDE_PLUGIN_ROOT missing → no traceback on stdout ──────────────
@@ -550,20 +543,26 @@ _STATS_RE = re.compile(
 )
 
 
-# ── T1: stats line present on match ──────────────────────────────────────────
+# ── T1: stats present in systemMessage on match ──────────────────────────────
 def test_stats_line_present_on_match():
     """
-    A matching prompt must include the token savings stats line at the very
-    end of additionalContext.
+    A matching prompt must set systemMessage (visible in UI) with the token
+    savings stats. Stats must NOT appear in additionalContext (that's for Claude).
     """
     stdout, _stderr, code = run_hook("renew book loan")
     assert code == 0
     parsed = json.loads(stdout)
-    ctx = parsed["hookSpecificOutput"]["additionalContext"]
 
-    last_line = ctx.strip().split("\n")[-1]
-    assert _STATS_RE.match(last_line), (
-        f"Expected stats line as last line of additionalContext, got: {last_line!r}"
+    assert "systemMessage" in parsed, (
+        "systemMessage key missing — stats must be visible in UI via systemMessage"
+    )
+    assert _STATS_RE.match(parsed["systemMessage"]), (
+        f"systemMessage has unexpected format: {parsed['systemMessage']!r}"
+    )
+    # Stats must NOT bleed into additionalContext (that's Claude's context only)
+    ctx = parsed["hookSpecificOutput"]["additionalContext"]
+    assert "[open-context]" not in ctx, (
+        "Stats line must not appear in additionalContext — use systemMessage only"
     )
 
 
@@ -576,11 +575,9 @@ def test_stats_values_are_sane():
     stdout, _stderr, code = run_hook("renew book loan")
     assert code == 0
     parsed = json.loads(stdout)
-    ctx = parsed["hookSpecificOutput"]["additionalContext"]
 
-    last_line = ctx.strip().split("\n")[-1]
-    m = _STATS_RE.match(last_line)
-    assert m, f"Stats line not found or malformed: {last_line!r}"
+    m = _STATS_RE.match(parsed.get("systemMessage", ""))
+    assert m, f"systemMessage not found or malformed: {parsed.get('systemMessage')!r}"
 
     pct = int(m.group(1))
     injected_kb = float(m.group(2))
@@ -603,9 +600,8 @@ def test_stats_values_are_sane():
 # ── T3: no stats when no domain matches ──────────────────────────────────────
 def test_no_stats_when_no_match():
     """
-    A prompt that matches no domain must produce empty stdout — no stats line,
-    no JSON envelope. Regression guard: stats code must not emit anything
-    on the no-match path.
+    A prompt that matches no domain must produce empty stdout — no systemMessage,
+    no JSON envelope at all. Silent no-op must be total.
     """
     stdout, _stderr, code = run_hook("explain this error message to me")
     assert code == 0
@@ -614,7 +610,7 @@ def test_no_stats_when_no_match():
     )
 
 
-# ── T4: stats line survives truncation ───────────────────────────────────────
+# ── T4: stats present in systemMessage even when report is truncated ──────────
 def test_stats_line_present_after_truncation(tmp_path):
     """
     When the report is truncated to MAX_CHARS, the stats line must still
@@ -720,11 +716,17 @@ def test_stats_line_present_after_truncation(tmp_path):
         pytest.skip("No domains matched — adjust test keywords")
 
     parsed = json.loads(stdout)
-    ctx = parsed["hookSpecificOutput"]["additionalContext"]
 
-    last_line = ctx.strip().split("\n")[-1]
-    assert _STATS_RE.match(last_line), (
-        f"Stats line must be last line even after truncation, got: {last_line!r}"
+    assert "systemMessage" in parsed, (
+        "systemMessage must be present even when report is truncated"
+    )
+    assert _STATS_RE.match(parsed["systemMessage"]), (
+        f"systemMessage malformed after truncation: {parsed['systemMessage']!r}"
+    )
+    # Stats must not appear inside additionalContext regardless of truncation
+    ctx = parsed["hookSpecificOutput"]["additionalContext"]
+    assert "[open-context]" not in ctx, (
+        "Stats must not bleed into additionalContext after truncation"
     )
 
 
