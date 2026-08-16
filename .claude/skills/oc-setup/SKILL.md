@@ -1,13 +1,13 @@
 ---
 name: oc-setup
-description: First-run setup wizard for open-context — asks 5 questions about scope, language, framework, architecture, and actors, then automatically generates context.yaml, test phrasing files, and validates in an agentic loop.
+description: First-run setup wizard for open-context — asks 6 questions about scope, communication language, programming language, framework, architecture, and actors, then automatically generates context.yaml, test phrasing files, and validates in an agentic loop.
 ---
 
 You are running the open-context first-run setup wizard. Execute all phases in order without waiting for the user to prompt you between phases. Be concise — summarise what you did after each phase in one line.
 
 ---
 
-## Phase 1 — Wizard (5 questions)
+## Phase 1 — Wizard (6 questions)
 
 Ask each question one at a time. Present options as a numbered list. Wait for the user's answer before asking the next question.
 
@@ -16,7 +16,15 @@ Ask each question one at a time. Present options as a numbered list. Wait for th
 > 1. `project` — saved to `.claude/oc-settings.yaml` in this repo (committed with the team)
 > 2. `global` — saved to `$CLAUDE_PLUGIN_DATA/open-context/settings.json` (your machine only, all projects)
 
-**Question 2 — Primary language**
+**Question 2 — Communication language**
+> What language should Claude use when talking about this project?
+> 1. English
+> 2. Vietnamese (Tiếng Việt)
+> 3. Other (specify)
+
+From this point on, use the chosen language for all responses in this session.
+
+**Question 3 — Primary language**
 > What language does this project use?
 > 1. Ruby
 > 2. Python
@@ -63,22 +71,24 @@ Write the settings file based on scope chosen in Question 1.
 **If scope = `project`**, create `.claude/oc-settings.yaml` in the current working directory:
 ```yaml
 scope: project
-language: <answer-2>
-framework: <answer-3>
+communication_language: <answer-2>
+language: <answer-3>
+framework: <answer-4>
 architecture:
-  name: <answer-4-name>
-  flow: [<component-chain-from-answer-4>]
-actors: [<answer-5-list>]
+  name: <answer-5-name>
+  flow: [<component-chain-from-answer-5>]
+actors: [<answer-6-list>]
 ```
 
 **If scope = `global`**, create `$CLAUDE_PLUGIN_DATA/open-context/settings.json`:
 ```json
 {
   "scope": "global",
-  "language": "<answer-2>",
-  "framework": "<answer-3>",
+  "communication_language": "<answer-2>",
+  "language": "<answer-3>",
+  "framework": "<answer-4>",
   "architecture": {
-    "name": "<answer-4-name>",
+    "name": "<answer-5-name>",
     "flow": ["<component>", "..."]
   },
   "actors": ["<actor>", "..."]
