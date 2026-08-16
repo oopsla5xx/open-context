@@ -11,6 +11,8 @@ If vendor/ is updated and these tests break, that is intentional —
 it means a breaking change was introduced in the vendored dependency.
 """
 
+from __future__ import annotations
+
 import json
 import os
 import subprocess

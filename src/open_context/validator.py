@@ -12,7 +12,7 @@ The CLI layer (cli.py) handles formatting and exit codes.
 import re
 from pathlib import Path
 
-from .resolver import resolve, score_domain
+from .resolver import resolve
 
 
 # ─────────────────────────────────────────────────────────────────────────────
