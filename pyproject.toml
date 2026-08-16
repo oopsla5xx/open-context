@@ -20,6 +20,9 @@ where = ["src"]
 [tool.pylint.main]
 ignore-paths = ["vendor"]
 
+[tool.pylint.format]
+max-line-length = 120
+
 [tool.pylint.messages_control]
 disable = [
     "missing-module-docstring",
@@ -28,4 +31,5 @@ disable = [
     "wrong-import-position",   # hook scripts must insert sys.path before imports
     "invalid-name",            # module-level vars in scripts misidentified as constants
     "too-many-branches",       # schema.py validate() has intentionally many branches
+    "too-many-locals",         # validator.py run_phrasing_tests has intentionally many locals
 ]

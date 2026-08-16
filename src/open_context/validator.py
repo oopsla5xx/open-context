@@ -196,7 +196,7 @@ _R6_PATTERN = re.compile(
 )
 
 
-def _r1_check(filepath: Path, content: str) -> list[dict]:
+def _r1_check(_filepath: Path, content: str) -> list[dict]:
     violations = []
     for i, line in enumerate(content.splitlines(), 1):
         s = line.strip()
@@ -209,14 +209,14 @@ def _r1_check(filepath: Path, content: str) -> list[dict]:
     return violations
 
 
-def _r2_check(filepath: Path, content: str) -> list[dict]:
+def _r2_check(_filepath: Path, content: str) -> list[dict]:
     if "Form.new(" in content and ".valid!" not in content:
         return [{"line": None, "code": None,
                  "detail": "Form.new() present but .valid! not called anywhere in file"}]
     return []
 
 
-def _r3_check(filepath: Path, content: str) -> list[dict]:
+def _r3_check(_filepath: Path, content: str) -> list[dict]:
     violations = []
     for i, line in enumerate(content.splitlines(), 1):
         s = line.strip()
@@ -228,7 +228,7 @@ def _r3_check(filepath: Path, content: str) -> list[dict]:
     return violations
 
 
-def _r4_check(filepath: Path, content: str) -> list[dict]:
+def _r4_check(_filepath: Path, content: str) -> list[dict]:
     violations = []
     for i, line in enumerate(content.splitlines(), 1):
         s = line.strip()
@@ -240,7 +240,7 @@ def _r4_check(filepath: Path, content: str) -> list[dict]:
     return violations
 
 
-def _r5_check(filepath: Path, content: str) -> list[dict]:
+def _r5_check(_filepath: Path, content: str) -> list[dict]:
     violations = []
     for i, line in enumerate(content.splitlines(), 1):
         s = line.strip()
@@ -261,7 +261,7 @@ def _r5_check(filepath: Path, content: str) -> list[dict]:
     return violations
 
 
-def _r6_check(filepath: Path, content: str) -> list[dict]:
+def _r6_check(_filepath: Path, content: str) -> list[dict]:
     violations = []
     for i, line in enumerate(content.splitlines(), 1):
         s = line.strip()

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 Context Resolver v0 — Open:Context
 
@@ -479,7 +481,7 @@ def format_report(r: dict) -> str:
     else:
         lines.append("  (no domain-specific files; use naming conventions to find files)")
 
-    lines.append(f"\n[EXCLUDED FROM RESOLVED CONTEXT]")
+    lines.append("\n[EXCLUDED FROM RESOLVED CONTEXT]")
     for ex in r.get("excluded", []):
         lines.append(f"  ✕ {ex}")
 
