@@ -6,8 +6,8 @@ Commands:
   resolve <task> --context PATH [--json]
       Route a task description to the relevant context layers.
 
-  validate --context PATH [--tests PATH] [--json]
-      Run phrasing coverage + amplification safety check.
+  validate --context PATH [--tests PATH] [--repo PATH] [--strict] [--json]
+      Run phrasing coverage + amplification safety + file-existence check.
 
   architecture validate [--repo PATH] [--path DIR] [--json]
       Run 6 HMVC architecture compliance rules against the codebase.
@@ -19,7 +19,7 @@ import argparse
 from pathlib import Path
 
 from .resolver import load_context, resolve, format_report
-from .validator import run_phrasing_tests, run_amplification_checks, run_arch_validate
+from .validator import run_phrasing_tests, run_amplification_checks, run_arch_validate, check_file_existence
 from .schema import validate_context
 
 
@@ -44,11 +44,15 @@ def cmd_validate(args):
     ctx = _load_and_validate(args.context)
     context_path = Path(args.context)
     tests_dir = Path(args.tests) if args.tests else context_path.parent / "tests"
+    repo_root = Path(args.repo).resolve() if args.repo else Path.cwd()
 
     sep = "─" * 72
     phrasing_results = run_phrasing_tests(ctx, tests_dir)
     by_domain = phrasing_results["by_domain"]
+    ampl_findings = run_amplification_checks(ctx)
+    file_check = check_file_existence(ctx, repo_root)
 
+    # ── Phrasing coverage ─────────────────────────────────────────────────────
     print(sep)
     print("open-context validate — Phrasing Coverage + Amplification Safety")
     print(sep)
@@ -80,10 +84,10 @@ def cmd_validate(args):
     else:
         print("\n[FAILURES] none — all phrasings routed correctly")
 
+    # ── Amplification safety ──────────────────────────────────────────────────
     print(f"\n{sep}")
     print("Amplification Safety Check")
     print(sep)
-    ampl_findings = run_amplification_checks(ctx)
 
     if not ampl_findings:
         print("  No amplification issues detected.")
@@ -101,12 +105,53 @@ def cmd_validate(args):
                 print(f"  ·  {f['domain']} | root='{f['root_token']}' | score={f['score']}")
                 print(f"     {f['detail']}")
 
+    # ── File existence check ──────────────────────────────────────────────────
+    print(f"\n{sep}")
+    print(f"File Existence Check  (repo: {file_check['repo_root']})")
+    print(sep)
+
+    if file_check["repo_mismatch"]:
+        print(
+            f"  ⚠  POSSIBLE --repo MISMATCH — 0 of {file_check['total_declared']} declared "
+            f"paths found under {file_check['repo_root']}. Check --repo is correct."
+        )
+    elif file_check["total_declared"] == 0:
+        print("  No related_components declared — nothing to check.")
+    else:
+        print(f"\n  {'Domain':<30} {'Declared':>8} {'Found':>6} {'Missing':>8}")
+        print("  " + "-" * 56)
+        for domain, r in file_check["by_domain"].items():
+            if not r["declared"]:
+                continue
+            marker = "⚠ " if r["missing"] else "  "
+            print(
+                f"  {marker}{domain:<28} {len(r['declared']):>8} "
+                f"{len(r['found']):>6} {len(r['missing']):>8}"
+            )
+        print("  " + "-" * 56)
+        print(
+            f"  {'TOTAL':<30} {file_check['total_declared']:>8} "
+            f"{file_check['total_found']:>6} {file_check['total_missing']:>8}"
+        )
+
+        if file_check["total_missing"] > 0:
+            print(f"\n  Missing paths:")
+            for domain, r in file_check["by_domain"].items():
+                for p in r["missing"]:
+                    print(f"    [{domain}] {p} — not found")
+        else:
+            print(f"\n  All {file_check['total_found']} declared paths found ✓")
+
+    # ── Summary ───────────────────────────────────────────────────────────────
     print(f"\n{sep}")
     pass_count = total["total_correct"]
     warn_count = len([f for f in ampl_findings if f["level"] == "WARNING"])
+    missing_count = file_check["total_missing"]
     print(
         f"RESULT  {pass_count}/{total['total_tested']} phrasings PASS "
-        f"({total['total_pct']:.0f}%)  |  {warn_count} amplification warning(s)"
+        f"({total['total_pct']:.0f}%)"
+        f"  |  {warn_count} amplification warning(s)"
+        f"  |  {missing_count} missing path(s)"
     )
     print(sep)
 
@@ -114,7 +159,20 @@ def cmd_validate(args):
         print(json.dumps({
             "phrasing_results": phrasing_results,
             "amplification_findings": ampl_findings,
+            "file_existence": file_check,
         }, indent=2, default=str))
+
+    # ── --strict exit code ────────────────────────────────────────────────────
+    if args.strict:
+        fail_reasons = []
+        if file_check["repo_mismatch"] or missing_count > 0:
+            fail_reasons.append(f"{missing_count} missing path(s)")
+        risky = [d for d, r in by_domain.items() if r.get("risk") in ("MEDIUM", "HIGH")]
+        if risky:
+            fail_reasons.append(f"MEDIUM/HIGH phrasing risk: {', '.join(risky)}")
+        if fail_reasons:
+            print(f"STRICT FAIL: {'; '.join(fail_reasons)}", file=sys.stderr)
+            sys.exit(1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -222,6 +280,10 @@ def main():
                             help="Path to context.yaml")
     p_validate.add_argument("--tests", metavar="PATH", default=None,
                             help="Path to tests directory (default: <context-dir>/tests/)")
+    p_validate.add_argument("--repo", metavar="PATH", default=None,
+                            help="Repo root for file-existence check (default: current directory)")
+    p_validate.add_argument("--strict", action="store_true",
+                            help="Exit 1 if any paths are missing or phrasing risk is MEDIUM/HIGH")
     p_validate.add_argument("--json", action="store_true", help="Also print JSON results")
     p_validate.set_defaults(func=cmd_validate)
 

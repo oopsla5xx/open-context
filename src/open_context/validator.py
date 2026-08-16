@@ -158,6 +158,74 @@ def run_amplification_checks(ctx: dict) -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# File-existence check
+# ─────────────────────────────────────────────────────────────────────────────
+
+def check_file_existence(ctx: dict, repo_root: "Path | str") -> dict:
+    """
+    Verify that every path declared in related_components (domain level and
+    subtype level) exists under repo_root.
+
+    Returns:
+      {
+        "repo_root": str,
+        "by_domain": {
+          domain_name: {
+            "declared": list[str],
+            "found":    list[str],
+            "missing":  list[str],
+          }
+        },
+        "total_declared": int,
+        "total_found":    int,
+        "total_missing":  int,
+        "repo_mismatch":  bool,   # True when total_found == 0 and total_declared > 0
+      }
+    """
+    root = Path(repo_root).resolve()
+    by_domain: dict = {}
+    total_declared = total_found = total_missing = 0
+
+    for domain in ctx.get("domains", []):
+        name = domain["name"]
+
+        # Collect paths from domain level + all subtype levels, deduped.
+        seen: set = set()
+        paths: list = []
+        for p in domain.get("related_components", []):
+            if p not in seen:
+                seen.add(p)
+                paths.append(p)
+        for st in domain.get("subtypes", []):
+            for p in st.get("related_components", []):
+                if p not in seen:
+                    seen.add(p)
+                    paths.append(p)
+
+        found = []
+        missing = []
+        for p in paths:
+            if (root / p.lstrip("/")).exists():
+                found.append(p)
+            else:
+                missing.append(p)
+
+        by_domain[name] = {"declared": paths, "found": found, "missing": missing}
+        total_declared += len(paths)
+        total_found += len(found)
+        total_missing += len(missing)
+
+    return {
+        "repo_root": str(root),
+        "by_domain": by_domain,
+        "total_declared": total_declared,
+        "total_found": total_found,
+        "total_missing": total_missing,
+        "repo_mismatch": total_declared > 0 and total_found == 0,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Architecture rules (6 HMVC compliance checks)
 # ─────────────────────────────────────────────────────────────────────────────
 
