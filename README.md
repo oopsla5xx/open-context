@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="assets/icon.webp" alt="Open:Context" width="48" style="vertical-align:middle;border-radius:12px">
+</p>
+
+<p align="center">
   <strong>Open:Context</strong>
 </p>
 
