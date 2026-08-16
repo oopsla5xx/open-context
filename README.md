@@ -64,7 +64,13 @@ You type a task. Before Claude responds, the hook has already resolved and injec
               app/models/member.rb
 ```
 
-Task matches no domain (e.g. "explain this error") → hook exits silently, nothing injected.
+After each matched prompt, Claude Code shows a system notice with token savings:
+
+```
+[open-context] 91% token reduction (1.2 KB injected vs 14.8 KB full context)
+```
+
+Task matches no domain (e.g. "explain this error") → hook exits silently, nothing injected, no notice shown.
 
 ---
 
@@ -75,7 +81,7 @@ Task matches no domain (e.g. "explain this error") → hook exits silently, noth
 /plugin install open-context@open-context
 ```
 
-First time you open a project after install, the plugin detects that no configuration exists and starts the setup wizard automatically — asks 6 questions (scope, communication language, programming language, framework, architecture pattern, actor roles), then generates `context.yaml`, test phrasing files, and validates everything in one agentic loop. Nothing to run manually.
+First time you open a project after install, the plugin detects that no configuration exists and starts the setup wizard automatically — asks up to 7 questions (scope, communication language, programming language, framework, architecture pattern, actor roles, and optionally CI setup), then generates `context.yaml`, test phrasing files, validates everything in one agentic loop, and optionally writes a GitHub Actions workflow. Nothing to run manually.
 
 **Uninstall:**
 
@@ -104,8 +110,13 @@ First time you open a project after install, the plugin detects that no configur
 
 ```bash
 pip install git+https://github.com/oopsla5xx/open-context.git
-open-context validate --context path/to/context.yaml --tests path/to/tests/
+# phrasing coverage + amplification + file-existence check
+open-context validate --context path/to/context.yaml --tests path/to/tests/ --repo . --strict
+# architecture rules
+open-context architecture validate --repo .
 ```
+
+`--strict` exits 1 when any declared path is missing or phrasing coverage is below 80% (MEDIUM/HIGH risk). Omit for local runs where you want warnings without a hard failure.
 
 ---
 
@@ -117,7 +128,7 @@ open-context validate --context path/to/context.yaml --tests path/to/tests/
 flowchart LR
     A[Install plugin] --> B[Open project\nSessionStart hook]
     B --> C{Config\nexists?}
-    C -->|No| D["/oc-setup wizard\n5 questions"]
+    C -->|No| D["/oc-setup wizard\nup to 7 questions"]
     D --> E[Generate\ncontext.yaml + tests]
     E --> F[Validate loop\nmax 3 rounds]
     F --> G["✓ Ready"]
@@ -144,7 +155,7 @@ flowchart LR
 
 | Skill | What it does |
 |-------|--------------|
-| `/oc-setup` | Setup wizard: 5 questions → generates `context.yaml` + test files → validates *routing* in an agentic loop (patch → retest → ask → repeat up to 3 rounds). Routing validation confirms phrasings route correctly — it does not verify that generated patterns/constraints are accurate or complete. Review the output before relying on it for production work. Re-run any time to reconfigure. |
+| `/oc-setup` | Setup wizard: up to 7 questions → generates `context.yaml` + test files → validates *routing* in an agentic loop (patch → retest → ask → repeat up to 3 rounds) → optionally writes a GitHub Actions CI workflow. Routing validation confirms phrasings route correctly — it does not verify that generated patterns/constraints are accurate or complete. Review the output before relying on it for production work. Re-run any time to reconfigure. |
 | `/oc-init` | Regenerate `context.yaml` for the current project — reads existing settings, scans docs and source code, validates automatically |
 | `/oc-resolve <task>` | Debug routing — full resolver output including domains that scored below threshold |
 | `/oc-validate` | Phrasing coverage tests + amplification safety check across `context.yaml` |
@@ -198,8 +209,6 @@ Runs grep across the real codebase — use for compliance audits, not routine ch
 ## Limitations
 
 **Keyword ceiling.** Tasks phrased with synonyms or colloquial language may score below threshold and inject nothing. Run `/oc-validate` regularly to catch phrasing gaps.
-
-**No file existence check.** The resolver infers files from metadata — it does not verify that listed paths exist on disk.
 
 **Architecture rules are fixed.** The 6 HMVC rules fit one project's conventions. Different naming or exception hierarchies require adjusting allowlists in `validator.py`.
 

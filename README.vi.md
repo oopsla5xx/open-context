@@ -64,7 +64,13 @@ Bạn gõ task. Trước khi Claude xử lý, hook đã resolve và inject xong:
               app/models/member.rb
 ```
 
-Task không match domain nào (ví dụ "giải thích lỗi này") → hook thoát im lặng, không inject gì.
+Sau mỗi prompt có match, Claude Code hiện một system notice kèm thống kê tiết kiệm token:
+
+```
+[open-context] 91% token reduction (1.2 KB injected vs 14.8 KB full context)
+```
+
+Task không match domain nào (ví dụ "giải thích lỗi này") → hook thoát im lặng, không inject gì, không hiện notice.
 
 ---
 
@@ -75,7 +81,7 @@ Task không match domain nào (ví dụ "giải thích lỗi này") → hook tho
 /plugin install open-context@open-context
 ```
 
-Lần đầu mở project sau khi cài, plugin tự phát hiện chưa có config và khởi động setup wizard — hỏi 6 câu (scope, ngôn ngữ giao tiếp, ngôn ngữ lập trình, framework, architecture pattern, actor roles), rồi tự sinh `context.yaml`, test phrasing file, và validate trong một agentic loop. Không cần gõ thêm lệnh nào.
+Lần đầu mở project sau khi cài, plugin tự phát hiện chưa có config và khởi động setup wizard — hỏi tối đa 7 câu (scope, ngôn ngữ giao tiếp, ngôn ngữ lập trình, framework, architecture pattern, actor roles, và tùy chọn CI), rồi tự sinh `context.yaml`, test phrasing file, validate trong một agentic loop, và tùy chọn tạo GitHub Actions workflow. Không cần gõ thêm lệnh nào.
 
 **Gỡ cài đặt:**
 
@@ -104,8 +110,13 @@ Lần đầu mở project sau khi cài, plugin tự phát hiện chưa có confi
 
 ```bash
 pip install git+https://github.com/oopsla5xx/open-context.git
-open-context validate --context path/to/context.yaml --tests path/to/tests/
+# phrasing coverage + amplification + kiểm tra file tồn tại
+open-context validate --context path/to/context.yaml --tests path/to/tests/ --repo . --strict
+# architecture rules
+open-context architecture validate --repo .
 ```
+
+`--strict` exit 1 khi có path khai báo bị thiếu hoặc phrasing coverage dưới 80% (MEDIUM/HIGH risk). Bỏ flag này khi chạy local để chỉ hiện warning mà không fail cứng.
 
 ---
 
@@ -117,7 +128,7 @@ open-context validate --context path/to/context.yaml --tests path/to/tests/
 flowchart LR
     A[Cài plugin] --> B[Mở project\nSessionStart hook]
     B --> C{Config\ntồn tại?}
-    C -->|Không| D["/oc-setup wizard\n5 câu hỏi"]
+    C -->|Không| D["/oc-setup wizard\ntối đa 7 câu hỏi"]
     D --> E[Sinh\ncontext.yaml + tests]
     E --> F[Validate loop\ntối đa 3 vòng]
     F --> G["✓ Sẵn sàng"]
@@ -144,7 +155,7 @@ flowchart LR
 
 | Skill | Làm gì |
 |-------|--------|
-| `/oc-setup` | Wizard setup: 5 câu → sinh `context.yaml` + test file → validate *routing* trong agentic loop (patch → retest → hỏi → lặp tối đa 3 vòng). Validate routing chỉ xác nhận phrasing route đúng — không kiểm tra pattern/constraint được sinh có chính xác và đầy đủ không. Review output trước khi dùng cho production. Chạy lại bất cứ lúc nào để cấu hình lại. |
+| `/oc-setup` | Wizard setup: tối đa 7 câu → sinh `context.yaml` + test file → validate *routing* trong agentic loop (patch → retest → hỏi → lặp tối đa 3 vòng) → tùy chọn tạo GitHub Actions CI workflow. Validate routing chỉ xác nhận phrasing route đúng — không kiểm tra pattern/constraint được sinh có chính xác và đầy đủ không. Review output trước khi dùng cho production. Chạy lại bất cứ lúc nào để cấu hình lại. |
 | `/oc-init` | Sinh lại `context.yaml` cho project hiện tại — đọc settings có sẵn, scan docs và source code, tự validate |
 | `/oc-resolve <task>` | Debug routing — full resolver output kể cả domain dưới ngưỡng |
 | `/oc-validate` | Phrasing coverage test + amplification safety check trên `context.yaml` |
@@ -198,8 +209,6 @@ Chạy grep trên codebase thật — dùng cho compliance audit, không phải 
 ## Giới hạn
 
 **Keyword có trần.** Task dùng từ đồng nghĩa hoặc cách diễn đạt khác có thể không match và không inject gì. Chạy `/oc-validate` thường xuyên để phát hiện khoảng trống phrasing.
-
-**Không verify file thực tế.** Resolver suy ra file từ metadata — không kiểm tra path đó có tồn tại không.
 
 **Architecture rule cố định.** 6 rule phản ánh convention của một project cụ thể. Project khác cần điều chỉnh allowlist trong `validator.py`.
 
