@@ -17,7 +17,8 @@ Run Open:Context phrasing coverage + amplification safety validation.
 
 3. Run:
    ```
-   python3 "${CLAUDE_PLUGIN_ROOT}/src/open_context/cli.py" validate \
+   PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/src:${CLAUDE_PLUGIN_ROOT}/vendor" \
+     python3 -m open_context.cli validate \
      --context <path-to-context.yaml> \
      --tests <path-to-tests-dir>
    ```

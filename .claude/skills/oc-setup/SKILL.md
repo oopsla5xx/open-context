@@ -206,17 +206,19 @@ rules:
 
 Create a `tests/` directory next to `.claude/context.yaml`. Write one `.txt` file per domain, named `<domain_name>.txt`. Each file contains 8–12 sample phrasings that should match that domain — one phrasing per line, no blank lines.
 
-Example for a `billing` domain:
+Example for a `billing` domain (`billing.txt`):
 ```
-create invoice for customer
-send payment reminder
-process subscription renewal
-handle failed charge
-issue refund for last payment
-update billing plan to enterprise
-list overdue invoices
-charge customer for upgrade
+create invoice for customer | billing
+send payment reminder | billing
+process subscription renewal | billing
+handle failed charge | billing
+issue refund for last payment | billing
+update billing plan to enterprise | billing
+list overdue invoices | billing
+charge customer for upgrade | billing
 ```
+
+Each line must be `phrasing | expected_domain` — the validator splits on `|` and checks that the resolver routes to that domain.
 
 ---
 
@@ -226,7 +228,8 @@ Run the validation CLI and fix issues in up to 3 iterations.
 
 **Run validation:**
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/src/open_context/cli.py" validate \
+PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/src:${CLAUDE_PLUGIN_ROOT}/vendor" \
+  python3 -m open_context.cli validate \
   --context .claude/context.yaml \
   --tests .claude/tests/
 ```
