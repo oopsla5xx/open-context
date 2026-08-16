@@ -73,6 +73,9 @@ Task không match domain nào (ví dụ "giải thích lỗi này") → hook tho
 
 Lần đầu mở project sau khi cài, plugin tự phát hiện chưa có config và khởi động setup wizard — hỏi 5 câu (scope, ngôn ngữ, framework, architecture pattern, actor roles), rồi tự sinh `context.yaml`, test phrasing file, và validate trong một agentic loop. Không cần gõ thêm lệnh nào.
 
+> [!IMPORTANT]
+> Tất cả các số liệu benchmark trong `docs/open-context-v0-architecture.md` (giảm context, tuân thủ architecture, chất lượng implementation) được đo trên Context Model **viết tay**. Output của `/oc-setup` chỉ được validate tự động về routing — nội dung domain/pattern/constraint *chưa* được benchmark riêng so với bản viết tay, đặc biệt với các scoping rule liên quan đến bảo mật. Hãy review file được sinh trước khi dùng trong môi trường production.
+
 **CI hoặc agent khác (tùy chọn):**
 
 ```bash
@@ -117,7 +120,7 @@ flowchart LR
 
 | Skill | Làm gì |
 |-------|--------|
-| `/oc-setup` | Wizard setup: 5 câu → sinh `context.yaml` + test file → validate trong agentic loop (patch → retest → hỏi → lặp tối đa 3 vòng). Chạy lại bất cứ lúc nào để cấu hình lại. |
+| `/oc-setup` | Wizard setup: 5 câu → sinh `context.yaml` + test file → validate *routing* trong agentic loop (patch → retest → hỏi → lặp tối đa 3 vòng). Validate routing chỉ xác nhận phrasing route đúng — không kiểm tra pattern/constraint được sinh có chính xác và đầy đủ không. Review output trước khi dùng cho production. Chạy lại bất cứ lúc nào để cấu hình lại. |
 | `/oc-init` | Sinh lại `context.yaml` cho project hiện tại — đọc settings có sẵn, scan docs và source code, tự validate |
 | `/oc-resolve <task>` | Debug routing — full resolver output kể cả domain dưới ngưỡng |
 | `/oc-validate` | Phrasing coverage test + amplification safety check trên `context.yaml` |
@@ -183,6 +186,8 @@ Chạy grep trên codebase thật — dùng cho compliance audit, không phải 
 **Latency hook trên setup không phải SSD.** Chạy trên mọi prompt: duyệt filesystem + resolve mỗi lần. Ước tính < 5 ms trên SSD local. Trên NFS mount, Docker volume, hoặc WSL2 cross-filesystem (`/mnt/c/...`), latency cao hơn và chưa được đo.
 
 **Tần suất truncation ở quy mô lớn.** Output bị cắt tại ranh giới section trước 9.500 ký tự. Benchmark trên 15 domain + 12 rule + 3 domain match đồng thời → ~9.700 ký tự (sát giới hạn). Với 20+ domain, truncation có thể xảy ra thường xuyên — compact output mode là giải pháp dự kiến.
+
+**Chất lượng `context.yaml` được sinh tự động.** `/oc-setup` và `/oc-init` sinh `context.yaml` qua wizard dùng LLM, chỉ validate tự động về routing. Liệu pattern/constraint được sinh có đạt độ chính xác tương đương bản viết tay — thuộc tính được đo trong `docs/open-context-v0-architecture.md` — chưa được kiểm tra.
 
 ---
 

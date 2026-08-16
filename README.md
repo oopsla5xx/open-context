@@ -73,6 +73,9 @@ Task matches no domain (e.g. "explain this error") → hook exits silently, noth
 
 First time you open a project after install, the plugin detects that no configuration exists and starts the setup wizard automatically — asks 5 questions (scope, language, framework, architecture pattern, actor roles), then generates `context.yaml`, test phrasing files, and validates everything in one agentic loop. Nothing to run manually.
 
+> [!IMPORTANT]
+> All benchmark numbers referenced in `docs/open-context-v0-architecture.md` (context reduction, architecture compliance, implementation quality) were measured against a **hand-written** Context Model. `/oc-setup`'s generated output passes automated routing validation, but its domain/pattern/constraint *content* has not been separately benchmarked against hand-written equivalents — especially for security-sensitive scoping rules. Review generated files before relying on them in production.
+
 **CI or other agents (optional):**
 
 ```bash
@@ -117,7 +120,7 @@ flowchart LR
 
 | Skill | What it does |
 |-------|--------------|
-| `/oc-setup` | Setup wizard: 5 questions → generates `context.yaml` + test files → validates in an agentic loop (patch → retest → ask → repeat up to 3 rounds). Re-run any time to reconfigure. |
+| `/oc-setup` | Setup wizard: 5 questions → generates `context.yaml` + test files → validates *routing* in an agentic loop (patch → retest → ask → repeat up to 3 rounds). Routing validation confirms phrasings route correctly — it does not verify that generated patterns/constraints are accurate or complete. Review the output before relying on it for production work. Re-run any time to reconfigure. |
 | `/oc-init` | Regenerate `context.yaml` for the current project — reads existing settings, scans docs and source code, validates automatically |
 | `/oc-resolve <task>` | Debug routing — full resolver output including domains that scored below threshold |
 | `/oc-validate` | Phrasing coverage tests + amplification safety check across `context.yaml` |
@@ -183,6 +186,8 @@ Runs grep across the real codebase — use for compliance audits, not routine ch
 **Hook latency on non-SSD setups.** Fires on every prompt: filesystem traversal + resolver execution. Estimated < 5 ms on local SSD. On NFS mounts, Docker volumes, or WSL2 cross-filesystem paths (`/mnt/c/...`), latency is higher and has not been measured.
 
 **Truncation at large scale.** Output cuts at the last section boundary before 9,500 characters. Synthetic benchmarks (15 domains, 12 rules, 3 simultaneous matches) produce ~9,700 characters — near the limit. At 20+ domains, truncation may become frequent. A compact output mode is the planned mitigation.
+
+**Auto-generated `context.yaml` quality.** `/oc-setup` and `/oc-init` generate `context.yaml` via an LLM-driven wizard, validated automatically for routing correctness only. Whether generated patterns/constraints match the accuracy of hand-written equivalents — the property measured in `docs/open-context-v0-architecture.md` — has not been tested.
 
 ---
 
