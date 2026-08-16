@@ -12,7 +12,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from hook_utils import check_plugin_root, read_stdin_json, setup_plugin_path  # noqa: E402
+from hook_utils import (  # noqa: E402
+    check_plugin_root, read_stdin_json, setup_plugin_path,
+    context_yaml_candidates, is_first_run, WIZARD_TRIGGER,
+)
 
 plugin_root = check_plugin_root("UserPromptSubmit hook")
 setup_plugin_path(plugin_root)
@@ -39,23 +42,19 @@ if env_path:
         )
 
 if not context_path:
-    candidates = [
-        cwd / ".claude" / "context.yaml",
-        cwd / "context.yaml",
-    ]
-    d = cwd.resolve()
-    while d != d.parent:
-        if (d / ".git").exists():
-            candidates.append(d / "context.yaml")
-            break
-        d = d.parent
-
-    for c in candidates:
+    for c in context_yaml_candidates(cwd):
         if c.exists():
             context_path = str(c)
             break
 
 if not context_path:
+    if is_first_run(cwd):
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
+                "additionalContext": WIZARD_TRIGGER,
+            }
+        }))
     sys.exit(0)
 
 # ── Resolve ───────────────────────────────────────────────────────────────────

@@ -362,9 +362,9 @@ def test_env_var_wrong_path(tmp_path):
     assert b"OPEN_CONTEXT_FILE" in stderr or b"not found" in stderr, (
         f"Expected warning about OPEN_CONTEXT_FILE in stderr, got: {stderr}"
     )
-    # stdout must be empty (no fallback context.yaml in tmp_path either)
-    assert stdout == b"", (
-        f"Expected empty stdout when no context.yaml found, got: {stdout[:200]}"
+    # No context.yaml + no settings → wizard trigger injected (first-run behavior)
+    assert b"First-run setup detected" in stdout, (
+        f"Expected wizard trigger in stdout for first-run project, got: {stdout[:200]}"
     )
 
 
