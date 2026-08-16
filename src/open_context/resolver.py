@@ -274,10 +274,14 @@ def component_reason(comp: str, matched_domains: list[dict], action: str) -> str
 # Main resolver
 # ─────────────────────────────────────────────────────────────────────────────
 
-def resolve(task: str, context: dict) -> dict:
+def resolve(task: str, context: dict, *, include_all_domains: bool = False) -> dict:
     """
     Resolve a task string into relevant context: components, rules, files.
     context: pre-loaded YAML dict from load_context().
+    include_all_domains: skip threshold filtering and include every domain
+    (used to compute the full-context baseline for token savings stats).
+    Note: zero-score domains are still passed through subtype/rule resolution,
+    so the baseline may include subtype-level content for irrelevant domains.
     """
     tokens = tokenize(task)
     action = infer_action(task)
@@ -286,15 +290,16 @@ def resolve(task: str, context: dict) -> dict:
     scored: list[tuple[int, dict, list[str]]] = []
     for domain in context.get("domains", []):
         score, matched_kws = score_domain(domain, tokens)
-        if score > 0:
+        if include_all_domains or score > 0:
             scored.append((score, domain, matched_kws))
     scored.sort(key=lambda x: x[0], reverse=True)
 
-    # Threshold: only keep domains whose score >= 66% of the top score,
-    # with a minimum absolute score of 2.
-    top_score = scored[0][0] if scored else 0
-    threshold = max(2, top_score * 0.66)
-    scored = [(s, d, kws) for s, d, kws in scored if s >= threshold]
+    if not include_all_domains:
+        # Threshold: only keep domains whose score >= 66% of the top score,
+        # with a minimum absolute score of 2.
+        top_score = scored[0][0] if scored else 0
+        threshold = max(2, top_score * 0.66)
+        scored = [(s, d, kws) for s, d, kws in scored if s >= threshold]
 
     matched_domains: list[dict] = [d for _, d, _ in scored]
     match_info: list[dict] = [

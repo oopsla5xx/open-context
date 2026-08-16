@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import textwrap
@@ -317,10 +318,22 @@ def test_truncation_boundary(tmp_path):
         last_line = before_truncation.rstrip("\n").rsplit("\n", 1)[-1]
         assert len(last_line) > 0, "Empty last line before truncation notice"
 
-    # Output must not exceed limit + truncation message overhead
-    assert len(ctx_text) <= 9500 + 100, (
+    # Output must not exceed limit + truncation message overhead + stats line (~80 chars)
+    assert len(ctx_text) <= 9500 + 100 + 80, (
         f"Output exceeds MAX_CHARS even after truncation: {len(ctx_text)}"
     )
+
+    # Stats line must be the very last line even when truncation fired.
+    # Stats are appended after truncation; this guards against any refactor
+    # that accidentally swaps that ordering.
+    if "[Context truncated" in ctx_text:
+        last_line = ctx_text.strip().split("\n")[-1]
+        assert re.match(
+            r"\[open-context\] \d+% token reduction \(\d+\.\d+ KB injected vs \d+\.\d+ KB full context\)$",
+            last_line,
+        ), (
+            f"Stats line must be last even after truncation, got: {last_line!r}"
+        )
 
 
 # ── Test 5: CLAUDE_PLUGIN_ROOT missing → no traceback on stdout ──────────────
@@ -525,4 +538,224 @@ def test_session_json_nesting_correct(tmp_path):
     assert "additionalContext" in hs, "additionalContext missing from hookSpecificOutput"
     assert hs.get("hookEventName") == "SessionStart", (
         f"hookEventName must be 'SessionStart', got: {hs.get('hookEventName')!r}"
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Token savings stats tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+_STATS_RE = re.compile(
+    r"\[open-context\] (\d+)% token reduction \((\d+\.\d+) KB injected vs (\d+\.\d+) KB full context\)$"
+)
+
+
+# ── T1: stats line present on match ──────────────────────────────────────────
+def test_stats_line_present_on_match():
+    """
+    A matching prompt must include the token savings stats line at the very
+    end of additionalContext.
+    """
+    stdout, _stderr, code = run_hook("renew book loan")
+    assert code == 0
+    parsed = json.loads(stdout)
+    ctx = parsed["hookSpecificOutput"]["additionalContext"]
+
+    last_line = ctx.strip().split("\n")[-1]
+    assert _STATS_RE.match(last_line), (
+        f"Expected stats line as last line of additionalContext, got: {last_line!r}"
+    )
+
+
+# ── T2: stats values are numerically sane ────────────────────────────────────
+def test_stats_values_are_sane():
+    """
+    Savings % must be in [0, 100]; injected KB must be ≤ full-context KB.
+    Full context must be > 0.
+    """
+    stdout, _stderr, code = run_hook("renew book loan")
+    assert code == 0
+    parsed = json.loads(stdout)
+    ctx = parsed["hookSpecificOutput"]["additionalContext"]
+
+    last_line = ctx.strip().split("\n")[-1]
+    m = _STATS_RE.match(last_line)
+    assert m, f"Stats line not found or malformed: {last_line!r}"
+
+    pct = int(m.group(1))
+    injected_kb = float(m.group(2))
+    full_kb = float(m.group(3))
+
+    assert 0 <= pct <= 100, f"Savings % out of range: {pct}"
+    assert full_kb > 0, "Full context size must be > 0"
+    assert injected_kb <= full_kb, (
+        f"Injected ({injected_kb} KB) must not exceed full context ({full_kb} KB)"
+    )
+    # Verify % direction is consistent with KB order (don't recompute from KB
+    # strings — they're already rounded to 1 decimal, so re-deriving an int %
+    # from them introduces compounded rounding error).
+    if injected_kb < full_kb:
+        assert pct > 0, "Injected < full but % shows 0 — rounding or logic error"
+    if injected_kb == full_kb:
+        assert pct == 0, "Injected == full but % is non-zero"
+
+
+# ── T3: no stats when no domain matches ──────────────────────────────────────
+def test_no_stats_when_no_match():
+    """
+    A prompt that matches no domain must produce empty stdout — no stats line,
+    no JSON envelope. Regression guard: stats code must not emit anything
+    on the no-match path.
+    """
+    stdout, _stderr, code = run_hook("explain this error message to me")
+    assert code == 0
+    assert stdout == b"", (
+        f"stdout must be empty on no-match, got {len(stdout)} bytes: {stdout[:200]}"
+    )
+
+
+# ── T4: stats line survives truncation ───────────────────────────────────────
+def test_stats_line_present_after_truncation(tmp_path):
+    """
+    When the report is truncated to MAX_CHARS, the stats line must still
+    appear as the last line. Stats are appended AFTER truncation, so they
+    must never be cut off.
+    """
+    rules_yaml = ""
+    for i in range(1, 13):
+        rules_yaml += (
+            f"  - id: rule-{i:02d}\n"
+            f"    description: >\n"
+            f"      Rule {i}: All mutations must be wrapped in a DB transaction. "
+            f"Partial writes are not recoverable. This applies across all domains.\n"
+            f"    severity: CRITICAL\n"
+            f"    guidance: |\n"
+            f"      Use ApplicationRecord.transaction. Never call .save! outside a block.\n"
+        )
+
+    large_context = textwrap.dedent("""\
+        project:
+          name: LargeApp
+          language: Ruby
+          framework: Rails 7
+          api_versioning: v1
+          default_actor: admin
+
+        architecture:
+          pattern: HMVC
+          flow: [controller, operation, form, model, serializer]
+          component_responsibilities:
+            controller: Routes HTTP, calls one Operation, renders JSON via Serializer.
+            operation: Sequences business workflow as step_* methods.
+            form: Input validation only.
+            model: AR persistence layer.
+            serializer: Formats Operation result as JSON.
+
+        domains:
+          - name: authentication
+            keywords: [login, logout, authenticate, session, token, oauth]
+            typical_actors: [admin, user]
+            coverage_level: pattern_indexed
+            related_components:
+              - app/controllers/v1/auth_controller.rb
+              - app/operations/v1/auth/create_operation.rb
+            patterns:
+              - id: auth-pat-01
+                description: >
+                  Authentication operations must validate ownership chain before mutation.
+                  Never skip this step. This is a long pattern to push output over limit.
+                  Extra text extra text extra text to grow the output size significantly.
+              - id: auth-pat-02
+                description: >
+                  All auth writes must emit a domain event to the auth_events queue.
+                  Use EventEmitter.emit with retry=3. Missing events cause audit gaps.
+
+          - name: billing
+            keywords: [invoice, payment, subscription, charge, refund, billing]
+            typical_actors: [admin, user]
+            coverage_level: pattern_indexed
+            related_components:
+              - app/controllers/v1/billing_controller.rb
+              - app/operations/v1/billing/create_operation.rb
+            patterns:
+              - id: billing-pat-01
+                description: >
+                  Billing operations must validate ownership before mutation.
+                  Billing failures must be idempotent. Retry with exponential backoff.
+              - id: billing-pat-02
+                description: >
+                  All billing writes must emit a domain event to the billing_events queue.
+                  Missing events cause revenue reconciliation gaps. Never swallow errors.
+
+          - name: notification
+            keywords: [notify, sms, push, alert, webhook, reminder, notification]
+            typical_actors: [admin, user]
+            coverage_level: pattern_indexed
+            related_components:
+              - app/controllers/v1/notification_controller.rb
+              - app/operations/v1/notification/create_operation.rb
+            patterns:
+              - id: notification-pat-01
+                description: >
+                  Notification operations must validate ownership before dispatch.
+                  Notifications are irreversible. Validate thoroughly before sending.
+              - id: notification-pat-02
+                description: >
+                  All notification writes must emit events. Track delivery per recipient.
+                  Failed notifications must be queued for retry, not silently dropped.
+
+        rules:
+        """) + rules_yaml
+
+    ctx_file = tmp_path / "context.yaml"
+    ctx_file.write_text(large_context)
+
+    stdout, _stderr, code = run_hook(
+        "login logout invoice payment alert notify",
+        cwd=str(tmp_path),
+    )
+    assert code == 0
+
+    if stdout == b"":
+        pytest.skip("No domains matched — adjust test keywords")
+
+    parsed = json.loads(stdout)
+    ctx = parsed["hookSpecificOutput"]["additionalContext"]
+
+    last_line = ctx.strip().split("\n")[-1]
+    assert _STATS_RE.match(last_line), (
+        f"Stats line must be last line even after truncation, got: {last_line!r}"
+    )
+
+
+# ── T5: include_all_domains returns more domains than filtered resolve ─────────
+def test_include_all_domains_returns_superset():
+    """
+    resolve(..., include_all_domains=True) must return at least as many
+    matched_domains as the normal filtered resolve() for any prompt.
+    This verifies the baseline calculation uses a true superset of domains.
+    """
+    sys.path.insert(0, str(PLUGIN_ROOT / "src"))
+    sys.path.insert(0, str(PLUGIN_ROOT / "vendor"))
+    from open_context import load_context, resolve  # noqa: PLC0415
+
+    context = load_context(SAMPLE_CONTEXT)
+
+    for prompt in ["renew book loan", "list books", "register member"]:
+        normal = resolve(prompt, context)
+        full = resolve(prompt, context, include_all_domains=True)
+
+        normal_count = len(normal["matched_domains"])
+        full_count = len(full["matched_domains"])
+
+        assert full_count >= normal_count, (
+            f"prompt={prompt!r}: include_all_domains gave {full_count} domains "
+            f"but filtered gave {normal_count} — full must be a superset"
+        )
+
+    # A prompt that matches nothing filtered must still have ALL domains in full
+    total_domains = len(context.get("domains", []))
+    unmatched_full = resolve("xyzzy frobnicate quux", context, include_all_domains=True)
+    assert len(unmatched_full["matched_domains"]) == total_domains, (
+        "include_all_domains must return every domain regardless of keyword match"
     )
