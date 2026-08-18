@@ -1,9 +1,5 @@
 <p align="center">
-  <img src="assets/icon.webp" alt="Open:Context" width="48" style="vertical-align:middle;border-radius:12px">
-</p>
-
-<p align="center">
-  <strong>Open:Context</strong>
+  <img src="assets/banner.webp" alt="Open:Context — route the right context for AI agents" width="800">
 </p>
 
 <p align="center">

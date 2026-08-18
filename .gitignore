@@ -11,3 +11,5 @@ build/
 
 # Disposable Next.js benchmark skeleton — never committed
 .tmp-nextjs-sample/
+
+notebooks/
