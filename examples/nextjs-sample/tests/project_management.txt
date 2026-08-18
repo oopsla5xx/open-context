@@ -1,0 +1,11 @@
+# Format: phrasing|expected_domain
+create a new project|project_management
+rename this project|project_management
+delete a project|project_management
+archive an old project|project_management
+list all projects for the owner|project_management
+show project details|project_management
+remove a project from the workspace|project_management
+start a new project workspace|project_management
+transfer project ownership|project_management
+update the project name|project_management

@@ -8,3 +8,6 @@ build/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+
+# Disposable Next.js benchmark skeleton — never committed
+.tmp-nextjs-sample/

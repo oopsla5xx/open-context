@@ -1,0 +1,11 @@
+# Format: phrasing|expected_domain
+upgrade the team billing plan|team_billing
+downgrade to the free plan|team_billing
+handle a stripe webhook event|team_billing
+check the team usage limit|team_billing
+view the current subscription plan|team_billing
+process a billing webhook|team_billing
+change the subscription plan|team_billing
+review the latest invoice|team_billing
+fix a billing webhook race condition|team_billing
+upgrade subscription for the team|team_billing
