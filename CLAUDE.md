@@ -28,6 +28,18 @@ open-context architecture validate --repo /path/to/rails-project
 
 > Use `/usr/bin/env python3` instead of bare `python3` for pytest — the `rtk` hook intercepts bare commands and may fail.
 
+## Release process
+
+1. Add a `## [X.Y.Z] — YYYY-MM-DD` entry to `CHANGELOG.md` (Added/Changed/Fixed sections as needed).
+2. Bump `version` in `.claude-plugin/plugin.json` to `X.Y.Z`.
+3. Commit both as `open-context(release): bump to vX.Y.Z`.
+4. `git tag open-context--vX.Y.Z`, then push the commit and the tag.
+5. `gh release create open-context--vX.Y.Z --title "..." --notes "..."`.
+
+`.github/workflows/release-changelog-check.yml` fails the tag-push workflow run if `CHANGELOG.md`
+wasn't touched since the previous `open-context--v*` tag — it flags a skipped step after the fact, it
+does not block the push itself.
+
 ## Repository Layout
 
 This repo is both the CLI package (`src/open_context/`) and the Claude Code plugin (`.claude-plugin/`, `hooks/`, `scripts/`, `.claude/skills/`).

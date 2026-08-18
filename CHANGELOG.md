@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.7] — 2026-08-18
+
+### Changed
+
+- `resolver.py`: `component_reason()` no longer hardcodes Rails component descriptions (`controller`/`operation`/`form`/`model`/`serializer`) — now derives text from `context.yaml`'s own `components.<name>.responsibility`/`patterns`, so a non-Rails component named `model` (or any of those 5 names) no longer leaks Rails-specific text (`ApplicationForm`, `attr_reader`)
+- `resolver.py`: `.ts`/`.tsx` files are no longer misclassified as directories in file inference; the "specific file" check is now based on whether the path has any extension, not a hardcoded `.rb`/`.py`/`.js` allowlist
+- `resolver.py`: the directory-search naming hint is now derived from `context.yaml`'s own `files.<component>.naming` templates instead of a hardcoded `.rb` hint
+- `__init__.py`, `cli.py`: wording no longer describes the resolver itself as Rails-only (`architecture validate` remains genuinely Rails-only and its help text still says so)
+
+### Added
+
+- `examples/nextjs-sample/` — Next.js App Router / Server Actions reference sample, used to benchmark the resolver on a second framework
+- `docs/nextjs-effectiveness-report.md`, `docs/nextjs-real-world-test-report.md` — benchmark results and findings from testing against a synthetic and a real-world Next.js codebase
+
 ## [0.1.0] — 2026-08-16
 
 First public release.

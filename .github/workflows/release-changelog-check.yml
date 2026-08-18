@@ -1,0 +1,32 @@
+name: release changelog check
+
+on:
+  push:
+    tags:
+      - 'open-context--v*'
+
+jobs:
+  check-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require CHANGELOG.md updated since the previous release tag
+        run: |
+          CURRENT_TAG="${GITHUB_REF_NAME}"
+          PREV_TAG=$(git tag --sort=-creatordate --list 'open-context--v*' | grep -vFx "${CURRENT_TAG}" | head -1)
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous release tag found — nothing to compare, skipping."
+            exit 0
+          fi
+
+          echo "Comparing CHANGELOG.md between ${PREV_TAG} and ${CURRENT_TAG}"
+          if git diff --name-only "${PREV_TAG}" "${CURRENT_TAG}" -- CHANGELOG.md | grep -q CHANGELOG.md; then
+            echo "CHANGELOG.md was updated since ${PREV_TAG}."
+          else
+            echo "::error::CHANGELOG.md was not updated since ${PREV_TAG}. Add a changelog entry for ${CURRENT_TAG}."
+            exit 1
+          fi
