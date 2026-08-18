@@ -200,7 +200,7 @@ def resolve_files(
                     continue
                 seen.add(component)
                 p = Path(component)
-                if p.suffix in (".rb", ".py", ".js", ".ts", ".tsx"):
+                if p.suffix:
                     files.append({
                         "path": component,
                         "type": "specific_file",
@@ -226,7 +226,7 @@ def resolve_files(
             if component in seen:
                 continue
             p = Path(component)
-            is_specific_file = p.suffix in (".rb", ".py", ".js", ".ts", ".tsx")
+            is_specific_file = bool(p.suffix)
 
             if is_specific_file:
                 seen.add(component)
