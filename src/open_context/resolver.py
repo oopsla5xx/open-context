@@ -152,11 +152,29 @@ def select_rules(context: dict, domain_names: set[str]) -> list[dict]:
     return results
 
 
+def _directory_naming_hint(file_patterns: dict, action: str) -> str:
+    """
+    Build a naming hint for a directory-type related_component from this
+    project's own context.yaml `files.<component>.naming` templates —
+    never a hardcoded framework-specific extension. Only templates that
+    are action-based (contain '{action}') apply to a directory fallback;
+    resource-based naming (e.g. a controller's '{resource}_controller.rb')
+    doesn't describe what to look for inside an unlisted directory.
+    """
+    hints = [
+        naming.replace("{action}", action)
+        for comp_def in file_patterns.values()
+        if "{action}" in (naming := comp_def.get("naming", ""))
+    ]
+    return " / ".join(hints) if hints else f"{action}_*"
+
+
 def resolve_files(
     domains: list[dict],
     action: str,
     tokens: list[str],
     matched_subtypes: list[dict] | None = None,
+    file_patterns: dict | None = None,
 ) -> list[dict]:
     """
     Infer relevant files from domain.related_components and, when present,
@@ -172,6 +190,7 @@ def resolve_files(
     """
     files: list[dict] = []
     seen: set[str] = set()
+    naming_hint = _directory_naming_hint(file_patterns or {}, action)
 
     if matched_subtypes:
         for si in matched_subtypes:
@@ -191,14 +210,13 @@ def resolve_files(
                         ),
                     })
                 else:
-                    hint = f"{action}_operation.rb / {action}_form.rb"
                     files.append({
                         "path": component,
                         "type": "search_directory",
-                        "naming_hint": hint,
+                        "naming_hint": naming_hint,
                         "reason": (
                             f"Subtype '{st['name']}' directory. "
-                            f"Look for '{action}_*.rb' — "
+                            f"Look for '{naming_hint}' — "
                             f"keywords: {', '.join(tokens[:6])}."
                         ),
                     })
@@ -222,14 +240,13 @@ def resolve_files(
                 })
             elif not matched_subtypes:
                 seen.add(component)
-                hint = f"{action}_operation.rb / {action}_form.rb"
                 files.append({
                     "path": component,
                     "type": "search_directory",
-                    "naming_hint": hint,
+                    "naming_hint": naming_hint,
                     "reason": (
                         f"Domain '{domain['name']}' related directory. "
-                        f"Look for '{action}_*.rb' files — "
+                        f"Look for '{naming_hint}' files — "
                         f"task keywords to guide search: {', '.join(tokens[:6])}."
                     ),
                 })
@@ -344,7 +361,11 @@ def resolve(task: str, context: dict, *, include_all_domains: bool = False) -> d
     applicable_rules = select_rules(context, domain_names)
 
     # ── 5. File inference ────────────────────────────────────────────────────
-    files = resolve_files(matched_domains, action, tokens, matched_subtypes=matched_subtypes)
+    files = resolve_files(
+        matched_domains, action, tokens,
+        matched_subtypes=matched_subtypes,
+        file_patterns=context.get("files", {}),
+    )
 
     # ── 6. Component reasons ─────────────────────────────────────────────────
     comp_reasons = {

@@ -826,3 +826,99 @@ def test_component_reason_reads_from_context_not_hardcoded_rails_text(tmp_path):
         "component_reason() did not surface this project's own "
         "responsibility/pattern text for the 'model' component"
     )
+
+
+# ── T: search_directory naming hint is data-driven, not hardcoded to Rails ────
+def test_directory_naming_hint_reads_from_context_not_hardcoded_rails_extension(tmp_path):
+    """
+    resolve_files()'s directory-fallback naming hint must come from this
+    project's own context.yaml `files.<component>.naming` templates, not a
+    hardcoded Rails extension (.rb / _operation / _form). A project that
+    declares no such naming data must get a generic '{action}_*' hint
+    instead of a Ruby-flavored one that makes no sense for its stack.
+    """
+    sys.path.insert(0, str(PLUGIN_ROOT / "src"))
+    sys.path.insert(0, str(PLUGIN_ROOT / "vendor"))
+    from open_context import load_context, resolve  # noqa: PLC0415
+
+    rails_shaped = tmp_path / "rails_shaped.yaml"
+    rails_shaped.write_text(
+        textwrap.dedent("""\
+            project:
+              name: RailsShaped
+              language: ruby
+              framework: rails
+              default_actor: user
+
+            architecture:
+              name: HMVC
+              flow: [operation, form]
+
+            components:
+              operation:
+                responsibility: [business_logic]
+              form:
+                responsibility: [input_validation]
+
+            files:
+              operation:
+                naming: "{action}_operation.rb"
+              form:
+                naming: "{action}_form.rb"
+
+            domains:
+              - name: widget_management
+                keywords: [widget, gadget, sprocket, doohickey]
+                typical_actors: [user]
+                related_components:
+                  - app/operations/widgets/
+            """)
+    )
+    non_rails = tmp_path / "non_rails.yaml"
+    non_rails.write_text(
+        textwrap.dedent("""\
+            project:
+              name: NonRailsApp
+              language: typescript
+              framework: nextjs
+              default_actor: user
+
+            architecture:
+              name: custom
+              flow: [server_action]
+
+            components:
+              server_action:
+                responsibility: [request_entry]
+
+            domains:
+              - name: widget_management
+                keywords: [widget, gadget, sprocket, doohickey]
+                typical_actors: [user]
+                related_components:
+                  - app/widgets/actions/
+            """)
+    )
+
+    rails_result = resolve("create a widget gadget", load_context(rails_shaped))
+    rails_hint = next(
+        f["naming_hint"] for f in rails_result["files"] if f["type"] == "search_directory"
+    )
+    assert rails_hint == "create_operation.rb / create_form.rb", (
+        f"A Rails-shaped project with its own files.*.naming templates should "
+        f"reproduce that exact naming hint, got {rails_hint!r}"
+    )
+
+    non_rails_result = resolve("create a widget gadget", load_context(non_rails))
+    non_rails_hint = next(
+        f["naming_hint"] for f in non_rails_result["files"] if f["type"] == "search_directory"
+    )
+    assert non_rails_hint == "create_*", (
+        f"A project with no files.*.naming templates must get a generic "
+        f"'{{action}}_*' hint, not a hardcoded Rails one — got {non_rails_hint!r}"
+    )
+    for rails_text in (".rb", "_operation", "_form"):
+        assert rails_text not in non_rails_hint, (
+            f"Rails-hardcoded text {rails_text!r} leaked into a non-Rails "
+            f"project's directory naming hint"
+        )
