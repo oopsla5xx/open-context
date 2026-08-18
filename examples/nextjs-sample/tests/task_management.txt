@@ -1,0 +1,11 @@
+# Format: phrasing|expected_domain
+assign a task to a teammate|task_management
+reassign this task to someone else|task_management
+move a task to the done column|task_management
+reorder tasks in the backlog|task_management
+drag a task to in progress|task_management
+create a new task in the sprint|task_management
+add a task to the kanban board|task_management
+unassign a task|task_management
+change the order of tasks on the board|task_management
+list unassigned tasks|task_management
