@@ -1,5 +1,5 @@
 """
-Open:Context — zero-LLM context resolver for Rails HMVC codebases.
+Open:Context — zero-LLM context resolver, driven entirely by context.yaml.
 
 Quick start:
     from open_context.resolver import load_context, resolve, format_report

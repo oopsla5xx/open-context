@@ -262,7 +262,7 @@ def _load_and_validate(context_path: str) -> dict:
 def main():
     parser = argparse.ArgumentParser(
         prog="open-context",
-        description="Open:Context CLI — context resolver + architecture validator for Rails HMVC projects",
+        description="Open:Context CLI — context resolver (any framework) + Rails HMVC architecture validator",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

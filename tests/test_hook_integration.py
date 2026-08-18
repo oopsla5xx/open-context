@@ -761,3 +761,68 @@ def test_include_all_domains_returns_superset():
     assert len(unmatched_full["matched_domains"]) == total_domains, (
         "include_all_domains must return every domain regardless of keyword match"
     )
+
+
+# ── T: component_reason() is data-driven, not hardcoded to Rails names ────────
+def test_component_reason_reads_from_context_not_hardcoded_rails_text(tmp_path):
+    """
+    component_reason() must derive its text from context.yaml's own
+    components.<name>.responsibility/patterns — not from a hardcoded dict
+    keyed on Rails component names (controller/operation/form/model/serializer).
+
+    A non-Rails project that happens to name a component 'model' must not
+    get Rails-flavored text (ApplicationForm, attr_reader, etc.) injected —
+    it should get text derived from what THIS project's context.yaml says.
+    """
+    sys.path.insert(0, str(PLUGIN_ROOT / "src"))
+    sys.path.insert(0, str(PLUGIN_ROOT / "vendor"))
+    from open_context import load_context, resolve, format_report  # noqa: PLC0415
+
+    context_yaml = tmp_path / "context.yaml"
+    context_yaml.write_text(
+        textwrap.dedent("""\
+            project:
+              name: NonRailsApp
+              language: typescript
+              framework: nextjs
+              default_actor: user
+
+            architecture:
+              name: custom
+              flow: [server_action, model]
+
+            components:
+              server_action:
+                responsibility:
+                  - request_entry
+              model:
+                responsibility:
+                  - schema_definition
+                  - persistence
+                patterns:
+                  - id: prisma_only
+                    description: All persistence goes through Prisma, never raw SQL.
+
+            domains:
+              - name: widget_management
+                keywords: [widget, gadget, sprocket, doohickey]
+                typical_actors: [user]
+            """)
+    )
+
+    context = load_context(context_yaml)
+    result = resolve("update the widget", context)
+    report = format_report(result)
+
+    # Must NOT contain any Rails-specific hardcoded text.
+    for rails_text in ("ApplicationForm", "attr_reader", "AR models", "rule-01", "rule-02"):
+        assert rails_text not in report, (
+            f"Rails-hardcoded text {rails_text!r} leaked into a non-Rails project's "
+            f"component reason — component_reason() is not reading from context.yaml"
+        )
+
+    # Must contain something derived from THIS project's own context.yaml.
+    assert "schema_definition" in report or "persistence" in report or "Prisma" in report, (
+        "component_reason() did not surface this project's own "
+        "responsibility/pattern text for the 'model' component"
+    )

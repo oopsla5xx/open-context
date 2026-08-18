@@ -6,12 +6,12 @@ Resolution strategy (no LLM, no vectors, no embeddings):
   1. Keyword matching against domain definitions in context.yaml
   2. Actor inference from domain metadata
   3. Action inference from task verb
-  4. HMVC component chain traversal
+  4. Component chain traversal (chain declared in context.yaml, not hardcoded)
   5. File inference from domain.related_components + naming conventions
   6. Rule selection by domain + severity
 
-The resolver is generic — it does NOT contain task-specific logic.
-Resolution is driven entirely by context.yaml metadata.
+The resolver is generic — it does NOT contain task-specific or framework-specific
+logic. Resolution is driven entirely by context.yaml metadata.
 """
 from __future__ import annotations
 
@@ -181,7 +181,7 @@ def resolve_files(
                     continue
                 seen.add(component)
                 p = Path(component)
-                if p.suffix in (".rb", ".py", ".js"):
+                if p.suffix in (".rb", ".py", ".js", ".ts", ".tsx"):
                     files.append({
                         "path": component,
                         "type": "specific_file",
@@ -208,7 +208,7 @@ def resolve_files(
             if component in seen:
                 continue
             p = Path(component)
-            is_specific_file = p.suffix in (".rb", ".py", ".js")
+            is_specific_file = p.suffix in (".rb", ".py", ".js", ".ts", ".tsx")
 
             if is_specific_file:
                 seen.add(component)
@@ -237,37 +237,34 @@ def resolve_files(
     return files
 
 
-def component_reason(comp: str, matched_domains: list[dict], action: str) -> str:
-    """Human-readable explanation for why this component layer is included."""
-    domain_labels = [d["name"] for d in matched_domains] or ["(generic)"]
-    reasons = {
-        "controller": (
-            "Every HTTP task needs a Controller. It instantiates one Operation, "
-            "calls .call, and renders the JSON response via Serializer. "
-            "No business logic lives here (rule-01, rule-02)."
-        ),
-        "operation": (
-            f"Task involves a business workflow (action='{action}', "
-            f"domain={domain_labels}). "
-            "Operation sequences the work as step_* methods: "
-            "load → validate via Form → execute → expose via attr_reader (rule-03, rule-04)."
-        ),
-        "form": (
-            "Input validation is required before any state mutation. "
-            "Per rule-04, the Operation must call Form.valid! first. "
-            "Form inherits ApplicationForm (ActiveModel::Model + Attributes + Validations). "
-            "Custom validations named validate :must_{condition} (rule-05)."
-        ),
-        "model": (
-            "AR models provide data persistence. Operation reads/writes models "
-            "after Form validation succeeds. Follow project conventions for model location."
-        ),
-        "serializer": (
-            "Controller formats the Operation result as JSON via Serializer. "
-            "Serializer is instantiated in Controller, never in Operation."
-        ),
-    }
-    return reasons.get(comp, f"'{comp}' is part of the architecture flow for this task.")
+def component_reason(comp: str, components: dict) -> str:
+    """
+    Human-readable explanation for why this component layer is included.
+
+    Derived entirely from context.yaml's components.<comp> block
+    (responsibility + patterns) — no framework-specific text is hardcoded
+    here, so the same function works for any architecture.flow a project
+    declares, not just Rails HMVC component names.
+    """
+    comp_def = components.get(comp) or {}
+    parts: list[str] = []
+
+    responsibilities = comp_def.get("responsibility", [])
+    if responsibilities:
+        parts.append(f"Responsibilities: {', '.join(responsibilities)}.")
+
+    pattern_descs = [
+        p["description"].strip().rstrip(".") + "."
+        for p in comp_def.get("patterns", [])
+        if p.get("description")
+    ]
+    if pattern_descs:
+        parts.append(" ".join(pattern_descs[:2]))
+
+    if parts:
+        return " ".join(parts)
+
+    return f"'{comp}' is part of the architecture flow for this task."
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -351,7 +348,7 @@ def resolve(task: str, context: dict, *, include_all_domains: bool = False) -> d
 
     # ── 6. Component reasons ─────────────────────────────────────────────────
     comp_reasons = {
-        comp: component_reason(comp, matched_domains, action)
+        comp: component_reason(comp, context.get("components", {}))
         for comp in base_flow
     }
     for d in matched_domains:
@@ -438,7 +435,7 @@ def format_report(r: dict) -> str:
                 f"keywords={d['matched_keywords']}  actors={d['typical_actors']}"
             )
     else:
-        lines.append("  (none — falling back to generic HMVC path)")
+        lines.append("  (none — falling back to generic component chain)")
 
     if r.get("matched_subtypes"):
         lines.append("\n[MATCHED SUBTYPES]")
