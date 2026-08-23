@@ -50,8 +50,8 @@ From this point on, use the chosen language for all responses in this session.
 
 If Phase 0 step 1 detected an ecosystem, pre-fill with a single **batch-confirm** line — not the heavier 4-choice format used for Question 4. Stack fields (language/framework/version/db/orm/test framework) are near-certain when read from a structured manifest (Gemfile/package.json/pyproject.toml) — asking the user to click through a Yes/Review/Select-another/Custom gate for each of 5-6 fields that are almost always right trains a click-through reflex that then carries into Question 4, the one question that actually needs a real pause. Match friction to actual risk:
 
-> Detected: `<language> <language_version>` · `<framework> <framework_version>` · `<package_manager>` · `<database>`[ + `<database_secondary>`] · `<orm>` · `<test_framework>`
-> (source: Gemfile / package.json / pyproject.toml — see `--json` output for per-field confidence)
+> Detected: `<language> <language_version>` · `<framework> <framework_version>` · `<package_manager>` · `<database>`[ + `<database_secondary>`] · `<orm>`[ + `<orm_secondary>`] · `<test_framework>`
+> (source: Gemfile / package.json / pyproject.toml — see `--json` output for per-field confidence; omit any field absent from the detect result, don't print an empty placeholder for it)
 > Press Enter to use this, or type corrections (e.g. "framework: Sinatra, test_framework: Minitest").
 
 If the user just presses Enter (or says "yes"/"ok"/equivalent): use the detected values directly, do not ask the numbered lists below.
@@ -93,7 +93,7 @@ If Phase 0 step 2 ran and printed `PROPOSE: yes`, pre-fill with the real discove
 > 3. Select another — pick from the standard patterns below
 > 4. Custom — describe your own component chain
 
-- If **Yes**: use `suggested_flow` as `architecture.flow`, and the discovered `allowed_dependencies` (from the `--json` output) as each component's `allowed_dependencies` in Phase 3 — this data already reflects real call-evidence (which component actually calls which), so do not ask the Phase 3 LLM step to re-derive it from scratch. `forbidden_dependencies` is not derived from discovery — leave that to Phase 3's judgment as before, since "what should be forbidden" is a design-intent call the detector deliberately does not make.
+- If **Yes**: use `suggested_flow` as `architecture.flow`, and the discovered `allowed_dependencies` (from the `--json` output) as each component's `allowed_dependencies` in Phase 3 — this data already reflects real call-evidence (which component actually calls which), so do not ask the Phase 3 LLM step to re-derive it from scratch. `forbidden_dependencies` is not derived from discovery — leave that to Phase 3's judgment as before, since "what should be forbidden" is a design-intent call the detector deliberately does not make. Any component in `external_components` keeps its place in the flow but its `context.yaml` responsibilities entry MUST note it is external (not owned by this repo, e.g. a `shared/` submodule) — never presented the same as a component the repo actually owns.
 - If **Review**: print the full edge table (`from -> to`, confidence %, `matched_files/total_files`, one or two example `file:line` hits per edge) plus `entry_candidates`, `terminal_candidates`, `unconnected`, `external_components` verbatim from the `--json` output. Then re-ask this same question (1/3/4 — Review is not a terminal answer, it feeds back into the choice with more information shown).
 - If **Select another** or **Custom**: discard the detected proposal entirely and proceed exactly as the blind flow below.
 
