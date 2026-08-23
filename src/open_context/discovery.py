@@ -256,11 +256,22 @@ _PY_FRAMEWORKS = (
 
 def _parse_pyproject(text: str) -> tuple[str | None, set[str]]:
     """Returns (requires_python, dependency_names). Uses tomllib (stdlib, py3.11+)
-    when parseable; falls back to a crude regex scan otherwise."""
+    when parseable; falls back to a crude regex scan otherwise.
+
+    tomllib is imported here, not at module top-level: the hook scripts this
+    package is also imported by (scripts/resolve_hook.py, via `open_context`
+    package `__init__.py`) support Python >=3.9 (see CLAUDE.md's "Known
+    Discrepancy"), while tomllib is stdlib only from 3.11 — a top-level
+    import would crash the hook path entirely on 3.9/3.10, not just this
+    one field. Catching broadly here is deliberate for the same reason:
+    on <3.11 the failure is ImportError, on malformed TOML it's
+    tomllib.TOMLDecodeError, and either way the fallback regex scan below
+    is the correct, safe response.
+    """
     try:
-        import tomllib
+        import tomllib  # pylint: disable=import-outside-toplevel
         data = tomllib.loads(text)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         m = re.search(r'requires-python\s*=\s*"([^"]+)"', text)
         requires_python = m.group(1) if m else None
         deps = {d.lower() for d in re.findall(r'"([A-Za-z0-9_\-]+)(?:[>=<~! ].*?)?"', text)}

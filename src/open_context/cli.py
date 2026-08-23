@@ -273,7 +273,8 @@ def cmd_arch_discover(args):
 
         print(f"\n  Suggested flow: {' -> '.join(result['suggested_flow']) or '(no connected components)'}")
         if result["cycle_detected"]:
-            print(f"  ⚠ Cycle detected among: {', '.join(result['cycle_detected'])} — order among these is not linear, reported as-is")
+            print(f"  ⚠ Cycle detected among: {', '.join(result['cycle_detected'])} — "
+                  f"order among these is not linear, reported as-is")
         if result["entry_candidates"]:
             print(f"  Entry candidate(s): {', '.join(result['entry_candidates'])}")
         if result["terminal_candidates"]:
@@ -284,7 +285,8 @@ def cmd_arch_discover(args):
         print(f"\n  {'Edge':<28} {'Confidence':>10}  {'Evidence'}")
         print("  " + "-" * 64)
         for e in result["edges"]:
-            print(f"  {e['from'] + ' -> ' + e['to']:<28} {e['confidence']:>9.0%}  {e['matched_files']}/{e['total_files']} files")
+            edge_label = f"{e['from']} -> {e['to']}"
+            print(f"  {edge_label:<28} {e['confidence']:>9.0%}  {e['matched_files']}/{e['total_files']} files")
 
         assessment = assess_confidence(result)
         print()
@@ -405,7 +407,8 @@ def main():
     p_arch_val.set_defaults(func=cmd_arch_validate)
 
     p_arch_disc = arch_sub.add_parser(
-        "discover", help="Discover the real component chain from app/ call-evidence (proposal only, never writes context.yaml)"
+        "discover",
+        help="Discover the real component chain from app/ call-evidence (proposal only, never writes context.yaml)",
     )
     p_arch_disc.add_argument("--repo", metavar="PATH", default=None,
                              help="Repo root to scan (default: current directory)")

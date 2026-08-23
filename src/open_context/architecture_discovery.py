@@ -123,6 +123,14 @@ def _token_patterns(token: str) -> list[re.Pattern]:
     return patterns
 
 
+def _first_matching_token(line: str, token_patterns: list[tuple[str, re.Pattern]]) -> "str | None":
+    """First token among `token_patterns` whose pattern matches this line, or None."""
+    for token, pat in token_patterns:
+        if pat.search(line):
+            return token
+    return None
+
+
 def scan_call_evidence(components: dict[str, list[Path]]) -> list[dict]:
     """Directed call-evidence edges between components. Primarily regex hits
     of `<other component's class token>.<method>`, plus (for validator
@@ -149,14 +157,13 @@ def scan_call_evidence(components: dict[str, list[Path]]) -> list[dict]:
             matched_files = set()
             for f in from_files:
                 for lineno, line in enumerate(lines_of(f), 1):
-                    for token, pat in token_patterns:
-                        if pat.search(line):
-                            hits.append({
-                                "file": str(f), "line": lineno,
-                                "token": token, "code": line.strip(),
-                            })
-                            matched_files.add(f)
-                            break
+                    token = _first_matching_token(line, token_patterns)
+                    if token:
+                        hits.append({
+                            "file": str(f), "line": lineno,
+                            "token": token, "code": line.strip(),
+                        })
+                        matched_files.add(f)
             if hits:
                 confidence = round(min(0.95, len(matched_files) / len(from_files)), 2)
                 edges.append({
