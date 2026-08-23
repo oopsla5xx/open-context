@@ -29,6 +29,11 @@ Scan in priority order, stopping as soon as you have enough signal:
 
 ## Step 3 — Generate context.yaml
 
+**Overwrite guard:** if `.claude/context.yaml` already exists, ask before writing:
+> `.claude/context.yaml` already exists. Overwrite? [y/N]
+
+Default (empty answer or `N`) → stop here, do not write anything, leave the existing file untouched. Only proceed to write if the user answers `y`.
+
 Write `.claude/context.yaml` following this four-layer schema:
 
 ```yaml
