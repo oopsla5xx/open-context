@@ -77,10 +77,6 @@ Task không match domain nào (ví dụ "giải thích lỗi này") → hook tho
 /plugin install open-context@open-context
 ```
 
-Lần đầu mở project sau khi cài, plugin tự phát hiện chưa có config và khởi động setup wizard — hỏi tối đa 7 câu (scope, ngôn ngữ giao tiếp, ngôn ngữ lập trình, framework, architecture pattern, actor roles, và tùy chọn CI), rồi tự sinh `context.yaml`, test phrasing file, validate trong một agentic loop, và tùy chọn tạo GitHub Actions workflow. Không cần gõ thêm lệnh nào.
-
-Nếu wizard không tự chạy (ví dụ bạn đang ở trong một session cũ chứ không phải session mới), có thể tự gõ `/oc-setup` bất cứ lúc nào — skill này chạy độc lập, không phụ thuộc vào hook.
-
 **Gỡ cài đặt:**
 
 ```bash
@@ -91,8 +87,20 @@ Nếu wizard không tự chạy (ví dụ bạn đang ở trong một session c�
 **Cập nhật lên phiên bản mới nhất:**
 
 ```bash
-/plugin update open-context@open-context
+claude plugin update open-context@open-context
 ```
+
+Chạy lệnh này từ terminal, không phải slash command trong Claude Code — `/plugin update` không tồn tại. Restart Claude Code sau đó để nạp phiên bản mới.
+
+---
+
+## Setup
+
+```bash
+/oc-setup
+```
+
+Hỏi tối đa 7 câu (scope, ngôn ngữ giao tiếp, ngôn ngữ lập trình, framework, architecture pattern, actor roles, và tùy chọn CI), sinh `context.yaml`, test phrasing file, validate trong một agentic loop, và tùy chọn tạo GitHub Actions workflow. Chạy lại bất cứ lúc nào để cấu hình lại.
 
 **CI hoặc agent khác (tùy chọn):**
 
@@ -114,13 +122,10 @@ open-context architecture validate --repo .
 
 ```mermaid
 flowchart LR
-    A[Cài plugin] --> B[Mở project\nSessionStart hook]
-    B --> C{Config\ntồn tại?}
-    C -->|Không| D["/oc-setup wizard\ntối đa 7 câu hỏi"]
-    D --> E[Sinh\ncontext.yaml + tests]
-    E --> F[Validate loop\ntối đa 3 vòng]
-    F --> G["✓ Sẵn sàng"]
-    C -->|Có| G
+    A[Cài plugin] --> B["/oc-setup\ntối đa 7 câu hỏi"]
+    B --> C[Sinh\ncontext.yaml + tests]
+    C --> D[Validate loop\ntối đa 3 vòng]
+    D --> E["✓ Sẵn sàng"]
 ```
 
 **Mọi prompt — routing tự động:**

@@ -8,7 +8,7 @@
     {
       "name": "open-context",
       "source": ".",
-      "description": "Automatically injects the right context into every Claude Code prompt — domains, component chain, files, and architecture rules — based on your project's context.yaml. No manual command needed."
+      "description": "Run `/oc-setup` once, then every prompt automatically gets the right context injected — domains, component chain, files, and architecture rules — based on your project's context.yaml."
     }
   ]
 }

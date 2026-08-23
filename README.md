@@ -77,10 +77,6 @@ Task matches no domain (e.g. "explain this error") → hook exits silently, noth
 /plugin install open-context@open-context
 ```
 
-First time you open a project after install, the plugin detects that no configuration exists and starts the setup wizard automatically — asks up to 7 questions (scope, communication language, programming language, framework, architecture pattern, actor roles, and optionally CI setup), then generates `context.yaml`, test phrasing files, validates everything in one agentic loop, and optionally writes a GitHub Actions workflow. Nothing to run manually.
-
-If the wizard doesn't start on its own (e.g. you're continuing in an existing session rather than a fresh one), run `/oc-setup` yourself at any time — it works standalone, independent of the hook.
-
 **Uninstall:**
 
 ```bash
@@ -91,8 +87,20 @@ If the wizard doesn't start on its own (e.g. you're continuing in an existing se
 **Update to latest version:**
 
 ```bash
-/plugin update open-context@open-context
+claude plugin update open-context@open-context
 ```
+
+Run this from your terminal, not as a slash command inside Claude Code — `/plugin update` doesn't exist. Restart Claude Code afterward to load the new version.
+
+---
+
+## Setup
+
+```bash
+/oc-setup
+```
+
+Asks up to 7 questions (scope, communication language, programming language, framework, architecture pattern, actor roles, and optionally CI setup), generates `context.yaml`, test phrasing files, validates everything in one agentic loop, and optionally writes a GitHub Actions workflow. Re-run any time to reconfigure.
 
 **CI or other agents (optional):**
 
@@ -114,13 +122,10 @@ open-context architecture validate --repo .
 
 ```mermaid
 flowchart LR
-    A[Install plugin] --> B[Open project\nSessionStart hook]
-    B --> C{Config\nexists?}
-    C -->|No| D["/oc-setup wizard\nup to 7 questions"]
-    D --> E[Generate\ncontext.yaml + tests]
-    E --> F[Validate loop\nmax 3 rounds]
-    F --> G["✓ Ready"]
-    C -->|Yes| G
+    A[Install plugin] --> B["/oc-setup\nup to 7 questions"]
+    B --> C[Generate\ncontext.yaml + tests]
+    C --> D[Validate loop\nmax 3 rounds]
+    D --> E["✓ Ready"]
 ```
 
 **Every prompt — automatic routing:**
