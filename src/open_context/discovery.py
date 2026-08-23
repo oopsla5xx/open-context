@@ -269,7 +269,7 @@ def _parse_pyproject(text: str) -> tuple[str | None, set[str]]:
     is the correct, safe response.
     """
     try:
-        import tomllib  # pylint: disable=import-outside-toplevel
+        import tomllib  # pylint: disable=import-outside-toplevel,import-error
         data = tomllib.loads(text)
     except Exception:  # pylint: disable=broad-exception-caught
         m = re.search(r'requires-python\s*=\s*"([^"]+)"', text)
