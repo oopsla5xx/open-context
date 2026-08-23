@@ -80,26 +80,67 @@ def infer_action(text: str) -> str:
     return "create"  # default: most tasks ask to implement / add something
 
 
+def _singularize(word: str) -> str:
+    """Naive singularization so 'company' also matches token 'companies'."""
+    if word.endswith("ies") and len(word) > 3:
+        return word[:-3] + "y"
+    if word.endswith(("ses", "xes", "ches", "shes")):
+        return word[:-2]
+    if word.endswith("s") and not word.endswith("ss") and len(word) > 1:
+        return word[:-1]
+    return word
+
+
+def _token_matches_word(token: str, word: str) -> bool:
+    """
+    Exact match, or same after singularizing, always count.
+    Prefix match (either direction) only counts for tokens of length >= 3 —
+    a 2-letter token (e.g. 'me') is coincidental noise as a prefix of an
+    unrelated longer word (e.g. 'member'), not real evidence of intent.
+    """
+    if token == word or _singularize(token) == _singularize(word):
+        return True
+    if len(token) < 3:
+        return False
+    return word.startswith(token) or token.startswith(word)
+
+
 def score_domain(domain: dict, tokens: list[str]) -> tuple[int, list[str]]:
     """
     Match domain keywords against task tokens.
-    A keyword matches if any task token equals the keyword, equals a part of it
-    (underscore-joined), or is a substring of it.
-    Returns (match_count, matched_keyword_list).
+
+    Single-word keywords match if any task token equals, prefixes, or
+    singularizes to the same form as the keyword.
+
+    Underscore-joined compound keywords (e.g. 'company_member') score one
+    point PER distinct part found among the tokens, not one point for the
+    whole keyword — a keyword whose parts individually appear as tokens
+    ("company" AND "member" both present) is real evidence of two matched
+    concepts, not one. Scoring it as 1 would unfairly discard domains that
+    happen to only have compound keywords vs. domains that accumulate score
+    from several unrelated single-word keywords.
+
+    Returns (score, matched_keyword_list) — matched_keyword_list still lists
+    each matched keyword once, for display/reason purposes.
     """
     matched = []
-    seen: set[str] = set()
+    score = 0
 
     for kw in domain.get("keywords", []):
-        kw_parts = set(kw.split("_"))
-        for token in tokens:
-            if token == kw or token in kw_parts or kw.startswith(token) or token.startswith(kw):
-                if kw not in seen:
-                    matched.append(kw)
-                    seen.add(kw)
-                break
+        kw_parts = kw.split("_")
+        if len(kw_parts) == 1:
+            contribution = 1 if any(_token_matches_word(t, kw) for t in tokens) else 0
+        else:
+            contribution = sum(
+                1 for part in set(kw_parts)
+                if any(_token_matches_word(t, part) for t in tokens)
+            )
 
-    return len(matched), matched
+        if contribution > 0:
+            matched.append(kw)
+            score += contribution
+
+    return score, matched
 
 
 def match_subtypes(domains: list[dict], tokens: list[str]) -> list[dict]:

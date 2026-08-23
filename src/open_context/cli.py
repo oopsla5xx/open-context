@@ -29,6 +29,8 @@ import json
 import argparse
 from pathlib import Path
 
+import yaml
+
 from .resolver import load_context, resolve, format_report
 from .validator import run_phrasing_tests, run_amplification_checks, run_arch_validate, check_file_existence
 from .schema import validate_context
@@ -87,7 +89,20 @@ def cmd_validate(args):
         f"{total['total_pct']:>8.0f}%"
     )
 
+    by_subtype = phrasing_results.get("by_subtype", {})
+    if by_subtype:
+        print(f"\n{'Subtype (parent)':<32} {'Tested':>6} {'Correct':>7} {'Coverage':>9} {'Risk':<8}")
+        print("-" * 64)
+        for st, r in by_subtype.items():
+            label = f"{st} ({r['parent_domain']})"
+            print(
+                f"  {label:<30} {r['tested']:>6} {r['correct']:>7} "
+                f"{r['pct']:>8.0f}% {r['risk']:<8}"
+            )
+        print("-" * 64)
+
     all_failures = [f for r in by_domain.values() for f in r["failures"]]
+    all_failures += [f for r in by_subtype.values() for f in r["failures"]]
     if all_failures:
         print(f"\n[FAILURES — {len(all_failures)} total]")
         for f in all_failures:
@@ -181,6 +196,7 @@ def cmd_validate(args):
         if file_check["repo_mismatch"] or missing_count > 0:
             fail_reasons.append(f"{missing_count} missing path(s)")
         risky = [d for d, r in by_domain.items() if r.get("risk") in ("MEDIUM", "HIGH")]
+        risky += [st for st, r in by_subtype.items() if r.get("risk") in ("MEDIUM", "HIGH")]
         if risky:
             fail_reasons.append(f"MEDIUM/HIGH phrasing risk: {', '.join(risky)}")
         if fail_reasons:
@@ -352,6 +368,15 @@ def _load_and_validate(context_path: str) -> dict:
         ctx = load_context(context_path)
     except FileNotFoundError:
         print(f"error: context file not found: {context_path}", file=sys.stderr)
+        sys.exit(1)
+    except yaml.YAMLError as e:
+        print(f"error: invalid YAML in {context_path}:", file=sys.stderr)
+        mark = getattr(e, "problem_mark", None)
+        problem = getattr(e, "problem", None) or str(e)
+        if mark is not None:
+            print(f"  line {mark.line + 1}, column {mark.column + 1}: {problem}", file=sys.stderr)
+        else:
+            print(f"  {problem}", file=sys.stderr)
         sys.exit(1)
     errors = validate_context(ctx)
     if errors:

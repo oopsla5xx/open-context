@@ -6,6 +6,23 @@ passing it to the resolver. Returns a list of error strings (empty = valid).
 """
 
 
+def _check_dead_keywords(label: str, keywords: list) -> list[str]:
+    """
+    The resolver only splits compound keywords on '_' — a keyword containing
+    a literal space (e.g. 'system setting') is never split, so it silently
+    degrades to a loose prefix check against the whole phrase instead of
+    matching both words. Always an authoring mistake: use 'system_setting'.
+    """
+    errors = []
+    for kw in keywords:
+        if isinstance(kw, str) and " " in kw.strip():
+            errors.append(
+                f"{label}: keyword '{kw}' contains a space — the resolver only splits on "
+                f"'_', so this will never match as intended; use '{kw.strip().replace(' ', '_')}'"
+            )
+    return errors
+
+
 def validate_context(ctx: dict) -> list[str]:
     """
     Validate the structure of a context.yaml dict.
@@ -42,6 +59,12 @@ def validate_context(ctx: dict) -> list[str]:
                 errors.append(f"domains[{i}]: missing 'name'")
             if not isinstance(d.get("keywords", []), list):
                 errors.append(f"domains[{i}] ({d.get('name', '?')}): 'keywords' must be a list")
+            else:
+                errors += _check_dead_keywords(f"domains[{i}] ({d.get('name', '?')})", d.get("keywords", []))
+            for j, st in enumerate(d.get("subtypes", [])):
+                errors += _check_dead_keywords(
+                    f"domains[{i}].subtypes[{j}] ({st.get('name', '?')})", st.get("keywords", [])
+                )
 
     # L4 — rules (optional but validated if present)
     rules = ctx.get("rules", [])

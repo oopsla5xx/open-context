@@ -46,10 +46,19 @@ def load_phrasings(tests_dir: "Path | str", domain: str) -> list[tuple[str, str]
 
 def run_phrasing_tests(ctx: dict, tests_dir: "Path | str") -> dict:
     """
-    Run phrasing tests for all domains defined in ctx.
+    Run phrasing tests for all domains defined in ctx, plus any subtype that
+    has its own <subtype_name>.txt test file.
+
+    A subtype test file checks routing into result["matched_subtypes"]
+    (not matched_domains) — subtype names live in a separate namespace from
+    domain names, so a domain-level check would never see them. Subtypes
+    with no dedicated test file are skipped (not reported as UNTESTED) since
+    per-subtype tests are optional, unlike domain tests.
+
     Returns:
       {
         "by_domain": { domain_name: { tested, correct, pct, risk, failures } },
+        "by_subtype": { subtype_name: { ..., parent_domain } },  # only if tested
         "total_tested": int,
         "total_correct": int,
         "total_pct": float,
@@ -57,6 +66,7 @@ def run_phrasing_tests(ctx: dict, tests_dir: "Path | str") -> dict:
     """
     domain_names = [d["name"] for d in ctx.get("domains", [])]
     results = {}
+    subtype_results = {}
     total_tested = total_correct = 0
 
     for domain in domain_names:
@@ -85,8 +95,39 @@ def run_phrasing_tests(ctx: dict, tests_dir: "Path | str") -> dict:
         total_tested += tested
         total_correct += correct
 
+    for domain in ctx.get("domains", []):
+        for st in domain.get("subtypes", []):
+            st_name = st["name"]
+            pairs = load_phrasings(tests_dir, st_name)
+            tested = len(pairs)
+            if tested == 0:
+                continue
+            correct = 0
+            failures = []
+
+            for phrase, expected in pairs:
+                result = resolve(phrase, context=ctx)
+                matched = [si["name"] for si in result["matched_subtypes"]]
+                if expected in matched:
+                    correct += 1
+                else:
+                    failures.append({"phrase": phrase, "expected": expected, "got": matched})
+
+            pct = (correct / tested * 100) if tested > 0 else 0.0
+            subtype_results[st_name] = {
+                "tested": tested,
+                "correct": correct,
+                "pct": pct,
+                "risk": _risk_label(pct),
+                "failures": failures,
+                "parent_domain": domain["name"],
+            }
+            total_tested += tested
+            total_correct += correct
+
     return {
         "by_domain": results,
+        "by_subtype": subtype_results,
         "total_tested": total_tested,
         "total_correct": total_correct,
         "total_pct": (total_correct / total_tested * 100) if total_tested > 0 else 0.0,
