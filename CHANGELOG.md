@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.9] — 2026-08-23
+
+### Fixed
+
+- `resolver.score_domain`: an underscore-joined compound keyword (e.g. `company_member`) scored only 1 point even when every one of its parts appeared as a task token — dedup was keyed by keyword name, not by which parts actually matched. Domains that happened to only have compound keywords lost routing to domains with several unrelated single-word keywords. Now scores one point per distinct matched part.
+- `resolver.score_domain`: plural task tokens with an irregular ending (`companies`) never matched their singular keyword (`company`) — `"companies".startswith("company")` is `False`. Added a small `_singularize()` helper (`ies→y`, `es→''`, `s→''`) checked both directions.
+- Fixing the compound-keyword scoring above surfaced a second, previously-masked bug: very short tokens (e.g. `me`) were prefix-matching unrelated longer keywords (`member`) and, once compound keywords scored correctly, could push an unrelated domain over threshold. Prefix matching now requires the token to be at least 3 characters.
+- `schema.validate_context`: a keyword containing a literal space (e.g. `"system setting"`) is silently unmatchable as a two-word AND-condition — the resolver only ever splits on `_`, so a space-keyword degrades to a loose prefix check against the whole phrase. Now rejected at validation time with a suggested `_`-joined replacement.
+- `cli._load_and_validate`: a syntax error in `context.yaml` (e.g. an unquoted `:` inside a scalar) raised an uncaught `yaml.YAMLError` and printed a raw Python traceback. Now caught and reported as `error: invalid YAML in <path>: line X, column Y: <reason>`.
+- `validator.run_phrasing_tests`: a phrasing test file named after a *subtype* (e.g. `company_domains.txt`) was silently never loaded — coverage was computed only over top-level domain names. Subtype test files are now loaded and checked against `matched_subtypes`; `open-context validate` prints them in a separate `[SUBTYPE COVERAGE]` section when present.
+
 ## [0.1.8] — 2026-08-23
 
 ### Added
