@@ -110,6 +110,10 @@ pip install git+https://github.com/oopsla5xx/open-context.git
 open-context validate --context path/to/context.yaml --tests path/to/tests/ --repo . --strict
 # architecture rules
 open-context architecture validate --repo .
+# stack detection (Ruby/Node/Python) — xem "Tự động phát hiện" ở dưới
+open-context detect --repo .
+# architecture discovery (app Rails-family) — xem "Tự động phát hiện" ở dưới
+open-context architecture discover --repo .
 ```
 
 `--strict` exit 1 khi có path khai báo bị thiếu hoặc phrasing coverage dưới 80% (MEDIUM/HIGH risk). Bỏ flag này khi chạy local để chỉ hiện warning mà không fail cứng.
@@ -151,11 +155,44 @@ flowchart LR
 
 | Skill | Làm gì |
 |-------|--------|
-| `/oc-setup` | Wizard setup: tối đa 7 câu → sinh `context.yaml` + test file → validate *routing* trong agentic loop (patch → retest → hỏi → lặp tối đa 3 vòng) → tùy chọn tạo GitHub Actions CI workflow. Validate routing chỉ xác nhận phrasing route đúng — không kiểm tra pattern/constraint được sinh có chính xác và đầy đủ không. Review output trước khi dùng cho production. Chạy lại bất cứ lúc nào để cấu hình lại. |
+| `/oc-setup` | Chạy tự động phát hiện trước (xem phần dưới) để pre-fill câu trả lời bằng evidence thật, rồi hỏi tối đa 7 câu → sinh `context.yaml` + test file → validate *routing* trong agentic loop (patch → retest → hỏi → lặp tối đa 3 vòng) → tùy chọn tạo GitHub Actions CI workflow. Validate routing chỉ xác nhận phrasing route đúng — không kiểm tra pattern/constraint được sinh có chính xác và đầy đủ không. Review output trước khi dùng cho production. Chạy lại bất cứ lúc nào để cấu hình lại (sẽ hỏi trước khi ghi đè `context.yaml`/settings đã có). |
 | `/oc-init` | Sinh lại `context.yaml` cho project hiện tại — đọc settings có sẵn, scan docs và source code, tự validate |
 | `/oc-resolve <task>` | Debug routing — full resolver output kể cả domain dưới ngưỡng |
 | `/oc-validate` | Phrasing coverage test + amplification safety check trên `context.yaml` |
 | `/oc-validate-architecture` | Quét tĩnh 6 HMVC compliance rule (R1–R6) trên codebase Rails |
+
+---
+
+## Tự động phát hiện
+
+`/oc-setup` không còn bắt đầu mù. Trước khi hỏi gì, nó chạy hai detector deterministic và pre-fill sẵn câu trả lời liên quan — bạn vẫn phải confirm từng câu; không có gì được ghi vào `context.yaml` nếu chưa có đồng ý rõ ràng.
+
+**Stack detection** — chỉ Ruby (`Gemfile`), Node (`package.json`), Python (`pyproject.toml`/`requirements.txt`) ở vòng này. Đọc config có cấu trúc trước; chỉ fallback sang prose `CLAUDE.md`/`README.md` cho field mà manifest không trả lời được (ví dụ version server database), với confidence thấp hơn rõ ràng. Field gần như chắc chắn được gộp thành 1 dòng batch-confirm — Enter để nhận, hoặc sửa đúng field sai:
+
+```
+Detected: Ruby 3.2.1 · Rails 7.0.4.2 · Bundler · PostgreSQL · ActiveRecord · RSpec
+Press Enter to use this, or type corrections.
+```
+
+**Architecture discovery** — chỉ app Rails-family ở vòng này. Quét `app/` để tìm component thật sự tồn tại và call-evidence giữa chúng — không bao giờ ép vào template HMVC cố định, vì một app thật có thể là `admin → operation → form → model`, không có serializer. Trình bày như một đề xuất, không phải quyết định:
+
+```
+Detected component chain (from real call-evidence in app/, not a template):
+admin → operations → forms → models
+Based on 11 discovered components, 11 call-evidence edges, no cycle detected.
+
+1. Yes — use this chain as-is
+2. Review — see the full per-edge evidence before deciding
+3. Select another — pick from the standard patterns
+4. Custom — describe your own component chain
+```
+
+Nếu evidence quá yếu hoặc quá rối để tin — không có call-evidence nào, hoặc có cycle chiếm phần lớn component đã kết nối — nó bỏ qua đề xuất và hỏi thẳng thay vì đoán liều. Cả hai detector cũng chạy độc lập được:
+
+```bash
+open-context detect --repo .
+open-context architecture discover --repo .
+```
 
 ---
 
@@ -217,6 +254,8 @@ Chạy grep trên codebase thật — dùng cho compliance audit, không phải 
 **Tần suất truncation ở quy mô lớn.** Output bị cắt tại ranh giới section trước 9.500 ký tự. Benchmark trên 15 domain + 12 rule + 3 domain match đồng thời → ~9.700 ký tự (sát giới hạn). Với 20+ domain, truncation có thể xảy ra thường xuyên — compact output mode là giải pháp dự kiến.
 
 **Chất lượng `context.yaml` được sinh tự động.** `/oc-setup` và `/oc-init` sinh `context.yaml` qua wizard dùng LLM, chỉ validate tự động về routing. Liệu pattern/constraint được sinh có đạt độ chính xác tương đương bản viết tay — thuộc tính được đo trong `docs/open-context-v0-architecture.md` — chưa được kiểm tra.
+
+**Phạm vi detector tự động phát hiện.** Stack detection chỉ hỗ trợ Ruby/Node/Python (đã verify trên 4 repo thật); các ngôn ngữ khác từng được nêu trong thiết kế ban đầu (Go, Java, Rust) chưa có detector. Architecture discovery chỉ hỗ trợ app Rails-family (đã verify trên 2 repo thật, một sạch và một có cycle thật) — Next.js/pattern khác chưa được cài. Cả hai đều được thu hẹp phạm vi có chủ đích, chỉ làm phần có ground truth thật để verify, không phải toàn bộ wishlist ban đầu.
 
 ---
 

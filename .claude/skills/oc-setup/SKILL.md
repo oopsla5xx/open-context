@@ -7,6 +7,28 @@ You are running the open-context first-run setup wizard. Execute all phases in o
 
 ---
 
+## Phase 0 — Discovery (silent, runs before any question)
+
+Before asking anything, run automated detection so Question 3 and Question 4 can be pre-filled with real evidence instead of asked blind. Print nothing yet — results are folded into the relevant question below. If any step below fails or finds nothing, fall back silently to asking that question blind (no error, no partial pre-fill).
+
+1. **Stack detection (4a).** Run:
+   ```
+   PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/src:${CLAUDE_PLUGIN_ROOT}/vendor" \
+     python3 -m open_context.cli detect --repo . --json
+   ```
+   Keep the result for Question 3. If no ecosystem was detected (empty `ecosystems`), Question 3 is asked blind as written below.
+
+   **If more than one ecosystem was detected** (e.g. a Rails app that also has a `package.json` for its JS asset pipeline, with no `framework` field found under Node — confirmed on qlear-v2-admin): prefer the ecosystem that has a detected `framework` value over one that doesn't — a repo's asset toolchain having a `package.json` doesn't make it "a Node project." If more than one ecosystem has a `framework` value, or none do, do not silently pick one — ask the user directly which ecosystem this question is about, listing what was found in each, before falling back to the blind flow below for that ecosystem.
+
+2. **Architecture discovery (4b — Ruby/Rails only this round).** Only run this if step 1 found `"ecosystem": "ruby"` with `framework.value` == `"Rails"` (or `"Rails"`-family — case-insensitive). For any other language/framework, skip this step entirely — 4b does not support Next.js or other patterns yet, and guessing outside Rails is exactly the un-verified risk this phase avoids. If it applies, run:
+   ```
+   PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/src:${CLAUDE_PLUGIN_ROOT}/vendor" \
+     python3 -m open_context.cli architecture discover --repo . --json
+   ```
+   Keep the result for Question 4. The result's `assess_confidence`-equivalent gate is printed in the human-readable (non-JSON) run as a `PROPOSE: yes/no` line with reasons — check that before deciding whether to pre-fill Question 4. If `PROPOSE: no`, Question 4 is asked blind as written below; do not show a rejected proposal to the user as if it were a real suggestion.
+
+---
+
 ## Phase 1 — Wizard (up to 7 questions)
 
 Ask each question one at a time. Present options as a numbered list. Wait for the user's answer before asking the next question.
@@ -24,7 +46,18 @@ Ask each question one at a time. Present options as a numbered list. Wait for th
 
 From this point on, use the chosen language for all responses in this session.
 
-**Question 3 — Primary language**
+**Question 3 — Primary language & framework**
+
+If Phase 0 step 1 detected an ecosystem, pre-fill with a single **batch-confirm** line — not the heavier 4-choice format used for Question 4. Stack fields (language/framework/version/db/orm/test framework) are near-certain when read from a structured manifest (Gemfile/package.json/pyproject.toml) — asking the user to click through a Yes/Review/Select-another/Custom gate for each of 5-6 fields that are almost always right trains a click-through reflex that then carries into Question 4, the one question that actually needs a real pause. Match friction to actual risk:
+
+> Detected: `<language> <language_version>` · `<framework> <framework_version>` · `<package_manager>` · `<database>`[ + `<database_secondary>`] · `<orm>`[ + `<orm_secondary>`] · `<test_framework>`
+> (source: Gemfile / package.json / pyproject.toml — see `--json` output for per-field confidence; omit any field absent from the detect result, don't print an empty placeholder for it)
+> Press Enter to use this, or type corrections (e.g. "framework: Sinatra, test_framework: Minitest").
+
+If the user just presses Enter (or says "yes"/"ok"/equivalent): use the detected values directly, do not ask the numbered lists below.
+If the user types a correction: apply only the corrected field(s), keep the rest of the detected values.
+If Phase 0 found nothing (no ecosystem detected) or detection is being overridden entirely, ask blind as before:
+
 > What language does this project use?
 > 1. Ruby
 > 2. Python
@@ -34,8 +67,7 @@ From this point on, use the chosen language for all responses in this session.
 > 6. Java / Kotlin
 > 7. Other (specify)
 
-**Question 3 — Framework**
-Present options based on the language chosen in Question 2:
+Then, based on the language chosen:
 - Ruby → 1. Rails  2. Sinatra  3. Hanami  4. Other
 - Python → 1. Django  2. FastAPI  3. Flask  4. Other
 - TypeScript → 1. Next.js  2. NestJS  3. Express  4. Other
@@ -45,6 +77,28 @@ Present options based on the language chosen in Question 2:
 - Other language → ask free text
 
 **Question 4 — Architecture pattern**
+
+**This question never auto-writes anything — the detected chain below is a proposal, not a decision. `context.yaml` is only ever written in Phase 3, after this question resolves to an explicit Yes/Review→Yes/Select-another/Custom answer.**
+
+If Phase 0 step 2 ran and printed `PROPOSE: yes`, pre-fill with the real discovered chain — never a fixed archetype name (that is exactly the guessing this phase exists to avoid; a real repo can turn out to use a different chain than any of the 5 standard options below, e.g. `admin → operation → form → model` with no serializer, ActiveAdmin as the entry point instead of a plain controller):
+
+> Detected component chain (from real call-evidence in `app/`, not a template):
+> `<suggested_flow joined by " → ">`
+> Based on <N> discovered components, <M> call-evidence edges, no cycle detected.
+> [if entry_candidates has more than 1] Note: multiple entry points found (`<entry_candidates>`) — the chain above is one linear reading of a graph that actually fans out; see Review for the full picture.
+> [if external_components is non-empty] Note: `<external_components>` are defined in a shared/ submodule, not owned by this repo.
+>
+> 1. Yes — use this chain as-is
+> 2. Review — see the full per-edge evidence (confidence + matched files) before deciding
+> 3. Select another — pick from the standard patterns below
+> 4. Custom — describe your own component chain
+
+- If **Yes**: use `suggested_flow` as `architecture.flow`, and the discovered `allowed_dependencies` (from the `--json` output) as each component's `allowed_dependencies` in Phase 3 — this data already reflects real call-evidence (which component actually calls which), so do not ask the Phase 3 LLM step to re-derive it from scratch. `forbidden_dependencies` is not derived from discovery — leave that to Phase 3's judgment as before, since "what should be forbidden" is a design-intent call the detector deliberately does not make. Any component in `external_components` keeps its place in the flow but its `context.yaml` responsibilities entry MUST note it is external (not owned by this repo, e.g. a `shared/` submodule) — never presented the same as a component the repo actually owns.
+- If **Review**: print the full edge table (`from -> to`, confidence %, `matched_files/total_files`, one or two example `file:line` hits per edge) plus `entry_candidates`, `terminal_candidates`, `unconnected`, `external_components` verbatim from the `--json` output. Then re-ask this same question (1/3/4 — Review is not a terminal answer, it feeds back into the choice with more information shown).
+- If **Select another** or **Custom**: discard the detected proposal entirely and proceed exactly as the blind flow below.
+
+If Phase 0 step 2 did not run (non-Rails, or no `app/` found) or printed `PROPOSE: no`, ask blind — do not show a rejected/skipped proposal as if it were a real suggestion, and do not guess at a confidence number to display:
+
 > What architectural pattern does this project follow?
 > 1. HMVC — controller → operation → form → model → serializer
 > 2. Service Objects — controller → service → model
@@ -73,6 +127,11 @@ If scope = `global`: skip this question silently — CI workflows belong to a re
 ---
 
 ## Phase 2 — Save settings
+
+**Overwrite guard:** if the target settings file (`.claude/oc-settings.yaml` for scope `project`, or `$CLAUDE_PLUGIN_DATA/open-context/settings.json` for scope `global`) already exists, ask before writing:
+> `<settings-path>` already exists. Overwrite? [y/N]
+
+Default (empty answer or `N`) → stop the whole wizard here, do not write anything, leave the existing file untouched. Only proceed if the user answers `y`.
 
 Write the settings file based on scope chosen in Question 1.
 
@@ -109,7 +168,14 @@ Create parent directories if they don't exist.
 
 ## Phase 3 — Generate context.yaml
 
+**Overwrite guard:** if `.claude/context.yaml` already exists, ask before writing:
+> `.claude/context.yaml` already exists. Overwrite? [y/N]
+
+Default (empty answer or `N`) → stop the whole wizard here, do not write anything, leave the existing file untouched. Only proceed if the user answers `y`.
+
 Scan the project and generate `.claude/context.yaml` using the wizard answers as L1 and L2 anchors.
+
+**If Question 4 was answered "Yes" from a Phase 0 architecture proposal:** use its `allowed_dependencies` output directly for the corresponding components' `allowed_dependencies` field below — this is real call-evidence (component A's files actually reference component B), not a guess, so do not ask this Phase 3 step to re-derive it independently; a second, independently-guessed source for the same fact risks silently disagreeing with the first. `forbidden_dependencies` is unaffected — that is still this step's own judgment call in every case, detected or not.
 
 ### Discovery (scan in priority order)
 

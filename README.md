@@ -110,6 +110,10 @@ pip install git+https://github.com/oopsla5xx/open-context.git
 open-context validate --context path/to/context.yaml --tests path/to/tests/ --repo . --strict
 # architecture rules
 open-context architecture validate --repo .
+# stack detection (Ruby/Node/Python) — see "Automated discovery" below
+open-context detect --repo .
+# architecture discovery (Rails-family apps) — see "Automated discovery" below
+open-context architecture discover --repo .
 ```
 
 `--strict` exits 1 when any declared path is missing or phrasing coverage is below 80% (MEDIUM/HIGH risk). Omit for local runs where you want warnings without a hard failure.
@@ -151,11 +155,44 @@ flowchart LR
 
 | Skill | What it does |
 |-------|--------------|
-| `/oc-setup` | Setup wizard: up to 7 questions → generates `context.yaml` + test files → validates *routing* in an agentic loop (patch → retest → ask → repeat up to 3 rounds) → optionally writes a GitHub Actions CI workflow. Routing validation confirms phrasings route correctly — it does not verify that generated patterns/constraints are accurate or complete. Review the output before relying on it for production work. Re-run any time to reconfigure. |
+| `/oc-setup` | Runs automated discovery first (see below) to pre-fill answers with real evidence, then asks up to 7 questions → generates `context.yaml` + test files → validates *routing* in an agentic loop (patch → retest → ask → repeat up to 3 rounds) → optionally writes a GitHub Actions CI workflow. Routing validation confirms phrasings route correctly — it does not verify that generated patterns/constraints are accurate or complete. Review the output before relying on it for production work. Re-run any time to reconfigure (asks before overwriting an existing `context.yaml`/settings file). |
 | `/oc-init` | Regenerate `context.yaml` for the current project — reads existing settings, scans docs and source code, validates automatically |
 | `/oc-resolve <task>` | Debug routing — full resolver output including domains that scored below threshold |
 | `/oc-validate` | Phrasing coverage tests + amplification safety check across `context.yaml` |
 | `/oc-validate-architecture` | Static scan of 6 HMVC compliance rules (R1–R6) across the Rails codebase |
+
+---
+
+## Automated discovery
+
+`/oc-setup` doesn't start blind. Before asking anything, it runs two deterministic detectors and pre-fills the relevant questions — you still confirm every answer; nothing is written to `context.yaml` without an explicit yes.
+
+**Stack detection** — Ruby (`Gemfile`), Node (`package.json`), Python (`pyproject.toml`/`requirements.txt`) only, this round. Reads structured config first; falls back to `CLAUDE.md`/`README.md` prose only for fields a manifest can't answer (e.g. a database's server version), at visibly lower confidence. Near-certain fields are shown as one batch-confirm line — press Enter to accept, or correct just the field that's wrong:
+
+```
+Detected: Ruby 3.2.1 · Rails 7.0.4.2 · Bundler · PostgreSQL · ActiveRecord · RSpec
+Press Enter to use this, or type corrections.
+```
+
+**Architecture discovery** — Rails-family apps only, this round. Scans `app/` for the components that actually exist and the call-evidence between them — never a fixed HMVC template, since a real app can turn out to be `admin → operation → form → model` with no serializer at all. Presented as a proposal, not a decision:
+
+```
+Detected component chain (from real call-evidence in app/, not a template):
+admin → operations → forms → models
+Based on 11 discovered components, 11 call-evidence edges, no cycle detected.
+
+1. Yes — use this chain as-is
+2. Review — see the full per-edge evidence before deciding
+3. Select another — pick from the standard patterns
+4. Custom — describe your own component chain
+```
+
+If the evidence is too weak or tangled to trust — no call-evidence at all, or a cycle covering most of the connected components — it skips the proposal and asks directly instead of guessing. Both detectors run standalone too:
+
+```bash
+open-context detect --repo .
+open-context architecture discover --repo .
+```
 
 ---
 
@@ -217,6 +254,8 @@ Runs grep across the real codebase — use for compliance audits, not routine ch
 **Truncation at large scale.** Output cuts at the last section boundary before 9,500 characters. Synthetic benchmarks (15 domains, 12 rules, 3 simultaneous matches) produce ~9,700 characters — near the limit. At 20+ domains, truncation may become frequent. A compact output mode is the planned mitigation.
 
 **Auto-generated `context.yaml` quality.** `/oc-setup` and `/oc-init` generate `context.yaml` via an LLM-driven wizard, validated automatically for routing correctness only. Whether generated patterns/constraints match the accuracy of hand-written equivalents — the property measured in `docs/open-context-v0-architecture.md` — has not been tested.
+
+**Discovery detector scope.** Stack detection covers Ruby/Node/Python only (verified against 4 real repos); other languages listed in early design notes (Go, Java, Rust) have no detector yet. Architecture discovery covers Rails-family apps only (verified against 2 real repos, one clean and one with a real cyclic dependency) — Next.js/other patterns are not implemented. Both were deliberately scoped to what has real ground truth to verify against, not the full original wishlist.
 
 ---
 

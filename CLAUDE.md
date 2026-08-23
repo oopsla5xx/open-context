@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Run all integration tests
-/usr/bin/env python3 -m pytest tests/test_hook_integration.py -v
+# Run all tests (hook integration + discovery unit tests)
+/usr/bin/env python3 -m pytest tests/ -v
 
 # Run a single test
 /usr/bin/env python3 -m pytest tests/test_hook_integration.py::test_json_nesting_correct -v
@@ -19,10 +19,12 @@ echo '{"prompt":"renew book loan","cwd":"/path/to/project","user_prompt":"renew 
 echo '{"cwd":"/path/to/project","hook_event_name":"SessionStart","session_id":"test"}' \
   | CLAUDE_PLUGIN_ROOT="$(pwd)" python3 scripts/session_hook.py
 
-# CLI (after pip install -e .)
+# CLI (after pip install -e ., or PYTHONPATH="src:vendor" python3 -m open_context.cli ...)
 open-context resolve "renew book loan" --context examples/rails-hmvc-sample/context.yaml
 open-context validate --context examples/rails-hmvc-sample/context.yaml --tests examples/rails-hmvc-sample/tests/
 open-context architecture validate --repo /path/to/rails-project
+open-context detect --repo /path/to/project                    # Phase 4a — stack detection (Ruby/Node/Python)
+open-context architecture discover --repo /path/to/rails-project  # Phase 4b — component-chain discovery (Rails only)
 # All CLI commands accept --json
 ```
 
@@ -55,7 +57,8 @@ This repo is both the CLI package (`src/open_context/`) and the Claude Code plug
 | `.claude/skills/` | Five skills: `/oc-setup`, `/oc-init`, `/oc-resolve`, `/oc-validate`, `/oc-validate-architecture` |
 | `.claude-plugin/plugin.json` | Plugin manifest (version, hooks path, skills path) |
 | `vendor/yaml/` | Vendored PyYAML 6.0.3 — pure Python only, MIT license in `vendor/PYYAML_LICENSE` |
-| `tests/` | Integration tests — run hooks as real subprocesses |
+| `tests/test_hook_integration.py` | Integration tests — run hooks as real subprocesses |
+| `tests/test_discovery.py`, `tests/test_architecture_discovery.py` | Unit tests (direct import, not subprocess) for Phase 4a/4b discovery modules |
 | `examples/rails-hmvc-sample/` | Working 3-domain reference: library management API |
 
 ## Plugin Architecture
@@ -86,7 +89,7 @@ All errors → stderr only. Empty stdout + exit 0 = deliberate silent no-op.
 
 | Skill | What it does |
 |-------|--------------|
-| `oc-setup` | Wizard (5 questions) → generates settings + `context.yaml` + test files → validate loop (patch → retest → ask, max 3 rounds) |
+| `oc-setup` | Phase 0 runs `detect` (+ `architecture discover` if Ruby/Rails) to pre-fill answers with real evidence, never auto-written → wizard (up to 7 questions) → generates settings + `context.yaml` + test files → validate loop (patch → retest → ask, max 3 rounds) |
 | `oc-init` | Reads existing settings, scans docs/code, generates `context.yaml` + tests, validates |
 | `oc-resolve` | Debug routing for a given task — shows all domain scores including below-threshold |
 | `oc-validate` | Phrasing coverage + amplification safety check |
@@ -98,8 +101,10 @@ All errors → stderr only. Empty stdout + exit 0 = deliberate silent no-op.
 |------|---------------|
 | `resolver.py` | Core routing: tokenize → score → filter → match subtypes → build component chain → infer files |
 | `validator.py` | Phrasing coverage validator (runs `resolve()` on `.txt` test files) + HMVC architecture rule checker |
-| `cli.py` | Three subcommands: `resolve`, `validate`, `architecture validate`. Core functions return plain dicts; CLI formats and sets exit codes. |
+| `cli.py` | Subcommands: `resolve`, `validate`, `architecture validate`, `detect`, `architecture discover`. Core functions return plain dicts; CLI formats and sets exit codes. |
 | `schema.py` | Validates `context.yaml` structure before any resolution |
+| `discovery.py` | Phase 4a — stack detection (Ruby/Node/Python), per-field confidence + source, never blended into one score |
+| `architecture_discovery.py` | Phase 4b — Rails-only component-chain discovery via real call-evidence in `app/`, never a fixed archetype |
 
 ### Resolution Algorithm
 
@@ -123,6 +128,16 @@ Coverage levels: `routing_only` / `file_indexed` / `pattern_indexed`.
 Amplification risk: flagged when one token matches ≥4 keywords in the same domain.
 
 Canonical reference: `examples/rails-hmvc-sample/context.yaml`.
+
+## Phase 4 — Automated Discovery
+
+Two independent, deterministic detectors that feed `/oc-setup`'s wizard — neither ever writes `context.yaml` directly; that only happens after the wizard's explicit approval in Phase 3.
+
+**4a — Stack detection (`discovery.py`)**: Ruby (Gemfile), Node (package.json), Python (pyproject.toml/requirements.txt) only — scope is bounded to what has real ground truth to verify against (`qlear-v2-admin`/`qlear-v2-bot`, `rush86999/atom`), not the full list in the original spec (Go/Java/etc. have no verified detector yet). Non-recursive — reads only the given `--repo` path, one ecosystem-manifest scan per call; a monorepo with multiple ecosystems (e.g. a Python `backend/` next to a Next.js `frontend-nextjs/`) needs one `detect` call per subdirectory. Every field carries its own `{value, confidence, source}` — deliberately not blended into one score, since a field from a structured manifest (near-certain) and one recovered from CLAUDE.md/README prose (much less certain) are not comparable.
+
+**4b — Architecture discovery (`architecture_discovery.py`)**: Rails-family apps only this round (no verified ground truth for other frameworks yet). Scans `app/` for real component directories and regex-based call-evidence between them (AST-lite, no AST engine) — never assumes a fixed 5-step HMVC chain; a real repo can turn out to use `admin → operation → form → model` with no serializer. Symlinked directories (e.g. a `shared/` submodule) are still scanned for call-evidence but flagged `external` rather than silently treated as owned code. `suggested_flow` is a full topological order (every connected component included, even ones in a cycle) — not a single greedy walk, which was found to silently drop real fan-out during validation. Whether to *propose* the discovered chain to the user is a small set of discrete red flags (zero edges; a cycle covering ≥50% of connected components), not a blended confidence score against a threshold — every weighted-penalty formula tried during development scored the hand-verified-correct `qlear-v2-admin` case at ~69%, just under a 70% cutoff, because it conflated real structural richness (multiple legitimate entry points) with detection uncertainty.
+
+`/oc-setup` Phase 0 runs both, then folds results into its wizard questions: Question 3 (stack) uses one batch-confirm line since near-certain fields don't warrant per-field friction; Question 4 (architecture) uses the heavier Yes/Review/Select-another/Custom gate, because that is the one answer that is both genuinely uncertain and expensive to get wrong. `oc-init` and `oc-setup` both got an overwrite guard (ask `[y/N]` before clobbering an existing settings file or `context.yaml`) as part of this work — an unrelated silent-data-loss bug found while auditing the write paths, not a Phase 4 feature.
 
 ## Known Discrepancy
 
