@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.8] — 2026-08-23
+
+### Added
+
+- `src/open_context/discovery.py` — Phase 4a stack detection: Ruby (`Gemfile`), Node (`package.json`), Python (`pyproject.toml`/`requirements.txt`); every field returns `{value, confidence, source}` rather than one blended score
+- `src/open_context/architecture_discovery.py` — Phase 4b Rails-only component-chain discovery via real call-evidence in `app/`: topological `suggested_flow` (not a greedy walk, to avoid dropping real fan-out), explicit cycle detection, symlinked/submodule components flagged `external`
+- New CLI subcommands: `open-context detect --repo <path>` and `open-context architecture discover --repo <path>` (both accept `--json`)
+- `/oc-setup` Phase 0 — runs both detectors silently before the wizard, pre-filling Question 3 (stack) as one batch-confirm line and Question 4 (architecture) behind a Yes/Review/Select-another/Custom gate; nothing is written to `context.yaml` without explicit approval in Phase 3
+- 19 new unit tests (`tests/test_discovery.py`, `tests/test_architecture_discovery.py`)
+
+### Fixed
+
+- `/oc-init` and `/oc-setup` now ask `[y/N]` before overwriting an existing `context.yaml` or settings file (previously silent data loss)
+
+### Changed
+
+- `.github/workflows/pylint.yml`: `actions/setup-python` v4 → v5; CI now runs the full test suite (`pytest tests/`) instead of only hook integration tests
+- `README.md`, `README.vi.md`, `CLAUDE.md`: document the two new detectors and the "Automated discovery" flow
+
 ## [0.1.7] — 2026-08-18
 
 ### Changed
