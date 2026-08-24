@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] — 2026-08-24
+
+### Added
+
+- `scripts/drift_hook.py` + `.sh` — new `PreToolUse` hook (matcher `Edit|Write`): when Claude edits a file belonging to a domain that the turn's original prompt never matched, injects that domain's rules/patterns before the write happens (`resolver.domains_by_path()`, `resolver.format_drift_report()`). Domain-level `related_components` only — subtypes need task-text keyword scoring, which a bare file path doesn't have.
+- Per-`session_id` drift state (`hook_utils.session_state_path()` et al., under `$CLAUDE_PLUGIN_DATA/open-context/session-state/`, tmp-dir fallback): tracks which domains were already surfaced this turn so the same domain isn't re-injected on every subsequent edit; reset on every new `UserPromptSubmit`.
+- `domain_drift_detection` setting (`oc-settings.yaml` project scope / `settings.json` global scope) to opt out — **defaults to `true`**. Measured cost: ~125–250ms per `Edit`/`Write` call (Python cold-start + pure-Python YAML parse per invocation, since each hook call is a fresh process) — kept on by default after review, but real-world reports of noticeable lag are the first thing to check if this needs revisiting.
+- 15 new tests covering the drift hook and the `.open-context/` layout below.
+
+### Changed
+
+- **Everything `/oc-setup` and `/oc-init` generate — `context.yaml`, `oc-settings.yaml`, `tests/` — now lives under `.open-context/` and is gitignored automatically** (both skills add the entry to the project's `.gitignore` before writing). Routing config is local to each developer's machine, not shared with the team via git; each teammate who wants routing runs `/oc-setup` themselves.
+- Removed the GitHub Actions CI generation feature entirely (the wizard's CI question and the phase that wrote `.github/workflows/open-context-validate.yml`) — incompatible with a gitignored `context.yaml`: GitHub only runs committed workflows, and a CI checkout only has what git tracked, so there was nothing for `open-context validate` to see by default. The CLI (`open-context validate --strict`, `open-context architecture validate`) still works standalone for anyone who commits `.open-context/` themselves and wires it into their own workflow.
+- `README.md` / `README.vi.md`: single unified install path (`/plugin marketplace add` → `/plugin install` → `/oc-setup`); dropped the separate "use the CLI directly" instructions.
+
+### Breaking
+
+- **No backward compatibility** with the `.claude/context.yaml` / `.claude/oc-settings.yaml` location used by every release through v0.1.9. This was a clean cutover, not a migration — anyone who already ran `/oc-setup` will see their project as first-run again and needs to re-run `/oc-setup` under `.open-context/`.
+
 ## [0.1.9] — 2026-08-23
 
 ### Fixed
