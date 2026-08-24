@@ -3,12 +3,12 @@ name: oc-init
 description: Scan the project and generate a context.yaml draft — reads oc-settings.yaml if present, otherwise infers everything from docs and source code. Runs validate automatically after generation.
 ---
 
-Generate `.claude/context.yaml` for this project by scanning existing documentation and source code.
+Generate `.open-context/context.yaml` for this project by scanning existing documentation and source code.
 
 ## Step 1 — Load settings if available
 
 Check for existing settings in this order:
-1. `.claude/oc-settings.yaml` in the current working directory
+1. `.open-context/oc-settings.yaml` in the current working directory
 2. `$CLAUDE_PLUGIN_DATA/open-context/settings.json`
 
 If found, use `language`, `framework`, `architecture`, and `actors` from settings as anchors for L1 and L2 — skip detecting those. If not found, infer everything from Phase 2.
@@ -29,12 +29,14 @@ Scan in priority order, stopping as soon as you have enough signal:
 
 ## Step 3 — Generate context.yaml
 
-**Overwrite guard:** if `.claude/context.yaml` already exists, ask before writing:
-> `.claude/context.yaml` already exists. Overwrite? [y/N]
+**Overwrite guard:** if `.open-context/context.yaml` already exists, ask before writing:
+> `.open-context/context.yaml` already exists. Overwrite? [y/N]
 
 Default (empty answer or `N`) → stop here, do not write anything, leave the existing file untouched. Only proceed to write if the user answers `y`.
 
-Write `.claude/context.yaml` following this four-layer schema:
+Before writing, ensure the repo-root `.gitignore` contains a `.open-context/` entry (create the file if missing, append the entry if no line already covers it, don't duplicate) — everything under `.open-context/` is local-only per developer, not shared with the team via git.
+
+Write `.open-context/context.yaml` following this four-layer schema:
 
 ```yaml
 # ── L1 STACK ──────────────────────────────────────────────────────────────────
@@ -111,15 +113,15 @@ rules:
 
 ## Step 4 — Generate test phrasing files
 
-Create `tests/` next to `.claude/context.yaml`. One `.txt` file per domain (`<domain_name>.txt`), 8–12 phrasings per file, one per line.
+Create `tests/` next to `.open-context/context.yaml`. One `.txt` file per domain (`<domain_name>.txt`), 8–12 phrasings per file, one per line.
 
 ## Step 5 — Validate
 
 Run:
 ```
 python3 "${CLAUDE_PLUGIN_ROOT}/src/open_context/cli.py" validate \
-  --context .claude/context.yaml \
-  --tests .claude/tests/
+  --context .open-context/context.yaml \
+  --tests .open-context/tests/
 ```
 
 Report coverage per domain. Flag any domain below 70% — suggest running `/oc-validate` after adjusting keywords or phrasings.
@@ -130,4 +132,4 @@ After generation:
 1. List domains identified and the primary signal source (which doc file or which code directory).
 2. Note any domains where the signal was weak or the boundary was ambiguous.
 3. Note any architecture rules found explicitly in docs vs. inferred from code patterns.
-4. Tell the user to commit `context.yaml` and `tests/` alongside the code they describe.
+4. Tell the user that `context.yaml` and `tests/` live under `.open-context/`, which is gitignored — local to this machine, not shared with the team via git.

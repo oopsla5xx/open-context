@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from hook_utils import (  # noqa: E402
     check_plugin_root, read_stdin_json, setup_plugin_path,
-    context_yaml_candidates, is_first_run, WIZARD_TRIGGER,
+    context_yaml_candidates, is_first_run, WIZARD_TRIGGER, reset_session_domains,
 )
 
 plugin_root = check_plugin_root("UserPromptSubmit hook")
@@ -27,6 +27,7 @@ MAX_CHARS = 9500
 data = read_stdin_json()
 prompt = data.get("prompt") or data.get("user_prompt", "")
 cwd = Path(data.get("cwd", "."))
+session_id = data.get("session_id", "")
 
 # ── Locate context.yaml ───────────────────────────────────────────────────────
 context_path = None
@@ -64,6 +65,13 @@ try:
 except Exception as exc:  # pylint: disable=broad-except
     print(f"[open-context] Resolver error: {exc}", file=sys.stderr)
     sys.exit(0)
+
+# Reset per-turn domain-drift state: whatever matched (or didn't) here is
+# the complete "already surfaced" set for the drift hook (drift_hook.py)
+# until the next prompt. Done even when nothing matched, so a task with
+# zero domain matches still lets drift detection catch every domain touched
+# during this turn.
+reset_session_domains(session_id, [d["name"] for d in result.get("matched_domains", [])])
 
 if not result.get("matched_domains"):
     sys.exit(0)

@@ -15,6 +15,13 @@
 </p>
 
 <p align="center">
+  <img alt="Auto-detect: Ruby" src="https://img.shields.io/badge/auto--detect-Ruby-CC342D?style=flat-square&logo=ruby&logoColor=white">
+  <img alt="Auto-detect: Node.js" src="https://img.shields.io/badge/auto--detect-Node.js-339933?style=flat-square&logo=node.js&logoColor=white">
+  <img alt="Auto-detect: Python" src="https://img.shields.io/badge/auto--detect-Python-3776AB?style=flat-square&logo=python&logoColor=white">
+  <img alt="Architecture discovery: Rails" src="https://img.shields.io/badge/architecture_discovery-Rails-CC0000?style=flat-square&logo=rubyonrails&logoColor=white">
+</p>
+
+<p align="center">
   <strong>Tiếng Việt</strong> · <a href="./README.md">English</a>
 </p>
 
@@ -100,19 +107,11 @@ Chạy lệnh này từ terminal, không phải slash command trong Claude Code 
 /oc-setup
 ```
 
-Hỏi tối đa 7 câu (scope, ngôn ngữ giao tiếp, ngôn ngữ lập trình, framework, architecture pattern, actor roles, và tùy chọn CI), sinh `context.yaml`, test phrasing file, validate trong một agentic loop, và tùy chọn tạo GitHub Actions workflow. Chạy lại bất cứ lúc nào để cấu hình lại.
+Hỏi tối đa 6 câu (scope, ngôn ngữ giao tiếp, ngôn ngữ lập trình, framework, architecture pattern, actor roles), sinh `context.yaml` và test phrasing file dưới `.open-context/`, validate trong một agentic loop. Chạy lại bất cứ lúc nào để cấu hình lại.
 
-**CI hoặc agent khác (tùy chọn):**
+`.open-context/` **local trên máy bạn và bị gitignore** (wizard tự thêm dòng này) — routing config là của riêng từng developer, không chia sẻ qua git cho cả team. Đồng nghiệp nào muốn dùng routing thì tự chạy `/oc-setup`.
 
-```bash
-pip install git+https://github.com/oopsla5xx/open-context.git
-# phrasing coverage + amplification + kiểm tra file tồn tại
-open-context validate --context path/to/context.yaml --tests path/to/tests/ --repo . --strict
-# architecture rules
-open-context architecture validate --repo .
-```
-
-`--strict` exit 1 khi có path khai báo bị thiếu hoặc phrasing coverage dưới 80% (MEDIUM/HIGH risk). Bỏ flag này khi chạy local để chỉ hiện warning mà không fail cứng.
+Automated discovery giúp pre-fill câu trả lời cho wizard, nhưng scope hiện tại còn hẹp: stack auto-detect chỉ đọc manifest của Ruby (`Gemfile`), Node.js (`package.json`), và Python (`pyproject.toml`/`requirements.txt`); architecture-chain auto-discovery chỉ hỗ trợ Rails. Ngôn ngữ/framework khác vẫn dùng được — bạn chỉ cần tự trả lời các câu hỏi đó thay vì được gợi ý sẵn. Phần routing (hook, `context.yaml`) hoàn toàn language-agnostic khi đã setup xong. Chi tiết ở [`docs/reference.md`](docs/reference.md#automated-discovery) *(tiếng Anh)*.
 
 ---
 
@@ -140,7 +139,7 @@ flowchart LR
     E --> F
 ```
 
-`context.yaml` được sinh tự động bởi `/oc-setup` hoặc `/oc-init` — hoặc tự viết tay, xem [`examples/rails-hmvc-sample/`](examples/rails-hmvc-sample/). PyYAML đã vendor sẵn, không cần `pip install` cho hook. Schema đầy đủ ở [`docs/reference.md`](docs/reference.md#contextyaml) (tiếng Anh).
+`context.yaml` được sinh dưới `.open-context/` bởi `/oc-setup` hoặc `/oc-init` — hoặc tự viết tay ở bất cứ đâu hook tìm tới (xem [`examples/rails-hmvc-sample/`](examples/rails-hmvc-sample/), nơi file này nằm ở root và được commit làm ví dụ tham khảo). PyYAML đã vendor sẵn, không cần `pip install` cho hook. Schema đầy đủ ở [`docs/reference.md`](docs/reference.md#contextyaml) (tiếng Anh).
 
 ---
 

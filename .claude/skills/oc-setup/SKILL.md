@@ -1,6 +1,6 @@
 ---
 name: oc-setup
-description: First-run setup wizard for open-context — asks up to 7 questions about scope, communication language, programming language, framework, architecture, actors, and optional CI — then generates context.yaml, test phrasing files, validates in an agentic loop, and optionally writes a GitHub Actions workflow.
+description: First-run setup wizard for open-context — asks up to 6 questions about scope, communication language, programming language, framework, architecture, and actors — then generates context.yaml and test phrasing files under .open-context/ (gitignored, local to your machine) and validates in an agentic loop.
 ---
 
 You are running the open-context first-run setup wizard. Execute all phases in order without waiting for the user to prompt you between phases. Be concise — summarise what you did after each phase in one line.
@@ -29,13 +29,15 @@ Before asking anything, run automated detection so Question 3 and Question 4 can
 
 ---
 
-## Phase 1 — Wizard (up to 7 questions)
+## Phase 1 — Wizard (up to 6 questions)
 
 Ask each question one at a time. Present options as a numbered list. Wait for the user's answer before asking the next question.
 
+open-context is local-only per developer: everything it generates (`.open-context/oc-settings.yaml`, `context.yaml`, `tests/`) lives under `.open-context/` and is gitignored (Phase 2 adds the entry) — it is not shared with the team via git. Each teammate who wants routing runs `/oc-setup` themselves.
+
 **Question 1 — Scope**
 > Where should open-context save its settings?
-> 1. `project` — saved to `.claude/oc-settings.yaml` in this repo (committed with the team)
+> 1. `project` — saved to `.open-context/oc-settings.yaml` in this repo (local to your machine, gitignored — applies only to this repo)
 > 2. `global` — saved to `$CLAUDE_PLUGIN_DATA/open-context/settings.json` (your machine only, all projects)
 
 **Question 2 — Communication language**
@@ -116,26 +118,18 @@ If Phase 0 step 2 did not run (non-Rails, or no `app/` found) or printed `PROPOS
 > 6. customer
 > 7. Other (specify)
 
-**Question 6 — GitHub Actions CI** *(only ask if scope = `project` from Question 1)*
-> Do you want to add a GitHub Actions workflow to validate `context.yaml` on every PR?
-> It will run `open-context validate --strict` + `open-context architecture validate` automatically.
-> 1. Yes — create `.github/workflows/open-context-validate.yml`
-> 2. No — skip (can add manually later)
-
-If scope = `global`: skip this question silently — CI workflows belong to a repo, not a global config.
-
 ---
 
 ## Phase 2 — Save settings
 
-**Overwrite guard:** if the target settings file (`.claude/oc-settings.yaml` for scope `project`, or `$CLAUDE_PLUGIN_DATA/open-context/settings.json` for scope `global`) already exists, ask before writing:
+**Overwrite guard:** if the target settings file (`.open-context/oc-settings.yaml` for scope `project`, or `$CLAUDE_PLUGIN_DATA/open-context/settings.json` for scope `global`) already exists, ask before writing:
 > `<settings-path>` already exists. Overwrite? [y/N]
 
 Default (empty answer or `N`) → stop the whole wizard here, do not write anything, leave the existing file untouched. Only proceed if the user answers `y`.
 
 Write the settings file based on scope chosen in Question 1.
 
-**If scope = `project`**, create `.claude/oc-settings.yaml` in the current working directory:
+**If scope = `project`**, create `.open-context/oc-settings.yaml` in the current working directory:
 ```yaml
 scope: project
 communication_language: <answer-2>
@@ -164,16 +158,18 @@ actors: [<answer-6-list>]
 
 Create parent directories if they don't exist.
 
+**Ensure `.gitignore` (only when scope = `project`; a `global` scope writes nothing into the repo):** everything open-context generates lives under `.open-context/`, and it is local-only per developer, so run this whenever `.open-context/oc-settings.yaml` is about to be written (but not if the overwrite guard above stopped the wizard). Check the repo-root `.gitignore` (create it if missing) and, if no line already covers `.open-context/` (or `.open-context`), append one. Do not duplicate the entry if some form of it is already present.
+
 ---
 
 ## Phase 3 — Generate context.yaml
 
-**Overwrite guard:** if `.claude/context.yaml` already exists, ask before writing:
-> `.claude/context.yaml` already exists. Overwrite? [y/N]
+**Overwrite guard:** if `.open-context/context.yaml` already exists, ask before writing:
+> `.open-context/context.yaml` already exists. Overwrite? [y/N]
 
 Default (empty answer or `N`) → stop the whole wizard here, do not write anything, leave the existing file untouched. Only proceed if the user answers `y`.
 
-Scan the project and generate `.claude/context.yaml` using the wizard answers as L1 and L2 anchors.
+Scan the project and generate `.open-context/context.yaml` using the wizard answers as L1 and L2 anchors.
 
 **If Question 4 was answered "Yes" from a Phase 0 architecture proposal:** use its `allowed_dependencies` output directly for the corresponding components' `allowed_dependencies` field below — this is real call-evidence (component A's files actually reference component B), not a guess, so do not ask this Phase 3 step to re-derive it independently; a second, independently-guessed source for the same fact risks silently disagreeing with the first. `forbidden_dependencies` is unaffected — that is still this step's own judgment call in every case, detected or not.
 
@@ -189,7 +185,7 @@ Scan the project and generate `.claude/context.yaml` using the wizard answers as
    - `app/models/` — primary models per domain
    - Routes file — confirm resource grouping
 
-### Output: `.claude/context.yaml`
+### Output: `.open-context/context.yaml`
 
 Write the file following this exact four-layer schema:
 
@@ -278,7 +274,7 @@ rules:
 
 ## Phase 4 — Generate test phrasing files
 
-Create a `tests/` directory next to `.claude/context.yaml`. Write one `.txt` file per domain, named `<domain_name>.txt`. Each file contains 8–12 sample phrasings that should match that domain — one phrasing per line, no blank lines.
+Create a `tests/` directory next to `.open-context/context.yaml` (i.e. `.open-context/tests/`). Write one `.txt` file per domain, named `<domain_name>.txt`. Each file contains 8–12 sample phrasings that should match that domain — one phrasing per line, no blank lines.
 
 Example for a `billing` domain (`billing.txt`):
 ```
@@ -304,8 +300,8 @@ Run the validation CLI and fix issues in up to 3 iterations.
 ```
 PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/src:${CLAUDE_PLUGIN_ROOT}/vendor" \
   python3 -m open_context.cli validate \
-  --context .claude/context.yaml \
-  --tests .claude/tests/
+  --context .open-context/context.yaml \
+  --tests .open-context/tests/
 ```
 
 **If all domains pass:** report success and stop.
@@ -335,88 +331,22 @@ If domains still fail after 2 iterations:
 
 ---
 
-## Phase 6 — Generate CI workflow *(only if Question 6 = Yes)*
-
-Create `.github/workflows/open-context-validate.yml` using the paths already known from earlier phases.
-
-### Path resolution
-
-| What | Value |
-|------|-------|
-| `<context-path>` | `.claude/context.yaml` (scope = project) |
-| `<tests-path>` | `.claude/tests/` |
-| `<source-dir>` | Inferred from Q3 language: Ruby → `app/**` · Python/TS/JS → `src/**` · Go → `**/*.go` · other → `src/**` |
-
-### Workflow template
-
-```yaml
-name: open-context validate
-
-on:
-  push:
-    branches: [main]
-    paths:
-      - '<context-path>'
-      - '<source-dir>'
-  pull_request:
-    paths:
-      - '<context-path>'
-      - '<source-dir>'
-
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install open-context
-        run: pip install git+https://github.com/oopsla5xx/open-context.git@main
-
-      - name: Validate context.yaml
-        run: |
-          open-context validate \
-            --context <context-path> \
-            --tests   <tests-path> \
-            --repo    . \
-            --strict
-
-      - name: Validate architecture
-        run: |
-          open-context architecture validate \
-            --repo .
-```
-
-### Rules (hardcoded — do not ask the user)
-
-- `--strict` is always on: CI must enforce missing paths and MEDIUM/HIGH phrasing risk as failures.
-- Write the file only — do not `git add`, do not commit, do not push. Print a note telling the user to review and commit manually.
-
-### After writing the file, print
-
-```
-CI workflow written → .github/workflows/open-context-validate.yml
-Review before committing — this triggers real CI on every PR.
-```
-
----
-
 ## Final report
 
 After all phases complete, print a summary:
 ```
 open-context setup complete
 
-Settings : <scope> → <path>
-Context  : .claude/context.yaml (<N> domains, <M> rules)
-Tests    : .claude/tests/ (<N> files, <M> phrasings)
-Validate : <pass/partial> — <X>/<N> domains above 70% coverage
-CI       : <.github/workflows/open-context-validate.yml written (review + commit to activate)>
-           OR <skipped>
+Settings   : <scope> → <path>
+Context    : .open-context/context.yaml (<N> domains, <M> rules)
+Tests      : .open-context/tests/ (<N> files, <M> phrasings)
+Validate   : <pass/partial> — <X>/<N> domains above 70% coverage
+.gitignore : <.open-context/ entry added> OR <already present> OR <skipped — global scope>
 
 Next: run /oc-validate any time context.yaml changes.
-Commit context.yaml and tests/ alongside the code they describe.
+Everything above lives under .open-context/ and is gitignored — local to this
+machine, not shared with the team via git. If you want CI to validate
+context.yaml on every PR, you'll need to commit .open-context/ yourself and
+wire up `open-context validate --strict` / `open-context architecture
+validate` in your own workflow — see the CLI usage in README.md.
 ```

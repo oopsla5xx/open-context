@@ -295,6 +295,87 @@ def resolve_files(
     return files
 
 
+def domains_by_path(context: dict, rel_path: str) -> list[dict]:
+    """
+    Reverse lookup: which domains claim rel_path via their domain-level
+    related_components (exact file match, or the path falling under a
+    declared directory)? rel_path must already be relative to repo root,
+    using '/' separators.
+
+    Subtype-level related_components are deliberately not considered here —
+    subtypes are disambiguated by scoring task-text keywords (see
+    match_subtypes()), and a bare file path carries no task text to score
+    against. Domain-level matching is the only signal available.
+
+    Returns every domain that matches — callers should not assume a single
+    "correct" domain when multiple domains declare overlapping paths.
+    """
+    rel_path = rel_path.replace("\\", "/").lstrip("/")
+    matches = []
+    for domain in context.get("domains", []):
+        for component in domain.get("related_components", []):
+            comp = component.replace("\\", "/").lstrip("/")
+            if Path(comp).suffix:
+                if rel_path == comp:
+                    matches.append(domain)
+                    break
+            else:
+                comp_dir = comp.rstrip("/")
+                if rel_path == comp_dir or rel_path.startswith(comp_dir + "/"):
+                    matches.append(domain)
+                    break
+    return matches
+
+
+def format_drift_report(rel_path: str, domains: list[dict], rules: list[dict]) -> str:
+    """
+    Lightweight report for the PreToolUse domain-drift hook: rules +
+    patterns only for the newly-surfaced domains.
+
+    Deliberately omits ACTION/ACTOR/COMPONENTS — those are inferred from
+    task text in resolve()/format_report(), and this hook only has a file
+    path, not a task string, so there is nothing real to infer them from.
+    """
+    lines: list[str] = []
+    sep = "─" * 70
+    domain_names = ", ".join(d["name"] for d in domains)
+
+    lines += [
+        sep,
+        f"[open-context] DOMAIN DRIFT — {rel_path}",
+        f"DOMAINS : {domain_names} (not yet surfaced this turn)",
+        sep,
+    ]
+
+    lines.append(f"\n[RULES]  ({len(rules)} applicable)")
+    for rule in rules:
+        lines.append(f"  [{rule.get('severity', 'minor').upper():<8}] {rule['id']}")
+        lines.append(f"             {rule['description'][:70]}")
+        if rule.get("guidance"):
+            lines.append("             [GUIDANCE]")
+            for gl in rule["guidance"].strip().split("\n"):
+                lines.append(f"               {gl}")
+
+    patterns: list[dict] = []
+    seen_ids: set[str] = set()
+    for d in domains:
+        for p in d.get("patterns", []):
+            if p["id"] not in seen_ids:
+                seen_ids.add(p["id"])
+                patterns.append(p)
+
+    if patterns:
+        lines.append(f"\n[PATTERNS]  ({len(patterns)} applicable)")
+        for p in patterns:
+            lines.append(f"\n  [{p['id']}]")
+            desc = " ".join(p["description"].strip().split())
+            for chunk in [desc[i:i + 68] for i in range(0, len(desc), 68)]:
+                lines.append(f"    {chunk}")
+
+    lines.append("\n" + sep)
+    return "\n".join(lines)
+
+
 def component_reason(comp: str, components: dict) -> str:
     """
     Human-readable explanation for why this component layer is included.

@@ -8,7 +8,7 @@ Run Open:Context phrasing coverage + amplification safety validation.
 ## Steps
 
 1. Locate `context.yaml` by checking in order:
-   - `.claude/context.yaml` in the current working directory
+   - `.open-context/context.yaml` in the current working directory
    - `context.yaml` in the current working directory
    - `context.yaml` at the git repository root (traverse up until `.git` is found)
    If `OPEN_CONTEXT_FILE` is set in the environment, use that path instead.

@@ -27,6 +27,7 @@ import pytest
 PLUGIN_ROOT = Path(__file__).parent.parent.resolve()
 HOOK_SCRIPT = PLUGIN_ROOT / "scripts" / "resolve_hook.py"
 SESSION_HOOK_SCRIPT = PLUGIN_ROOT / "scripts" / "session_hook.py"
+DRIFT_HOOK_SCRIPT = PLUGIN_ROOT / "scripts" / "drift_hook.py"
 SAMPLE_CONTEXT = (
     Path(__file__).parent.parent
     / "examples"
@@ -432,10 +433,10 @@ def test_session_no_config_injects_wizard(tmp_path):
 # ── S2: project settings exist → silent no-op ────────────────────────────────
 def test_session_project_settings_no_op(tmp_path):
     """
-    When .claude/oc-settings.yaml exists in cwd, hook must exit silently —
+    When .open-context/oc-settings.yaml exists in cwd, hook must exit silently —
     setup has already been completed for this project.
     """
-    settings_dir = tmp_path / ".claude"
+    settings_dir = tmp_path / ".open-context"
     settings_dir.mkdir()
     (settings_dir / "oc-settings.yaml").write_text("scope: project\nlanguage: ruby\n")
 
@@ -922,3 +923,282 @@ def test_directory_naming_hint_reads_from_context_not_hardcoded_rails_extension(
             f"Rails-hardcoded text {rails_text!r} leaked into a non-Rails "
             f"project's directory naming hint"
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# .open-context/ layout tests — local-only, gitignored config location
+# ══════════════════════════════════════════════════════════════════════════════
+
+def test_resolve_hook_finds_dot_open_context_context_yaml(tmp_path):
+    """
+    resolve_hook.py must find context.yaml under .open-context/ — the
+    wizard-generated location — not just a hand-authored root-level file.
+    """
+    oc_dir = tmp_path / ".open-context"
+    oc_dir.mkdir()
+    (oc_dir / "context.yaml").write_text(SAMPLE_CONTEXT.read_text())
+
+    stdout, stderr, code = run_hook("renew book loan", cwd=str(tmp_path))
+    assert code == 0
+    assert stdout != b""
+    parsed = json.loads(stdout)
+    ctx = parsed["hookSpecificOutput"]["additionalContext"]
+    assert "[MATCHED DOMAINS]" in ctx
+    assert "borrowing_management" in ctx
+
+
+def test_drift_hook_resolves_repo_root_above_dot_open_context(tmp_path):
+    """
+    The drift hook's repo-root derivation must treat .open-context/ the same
+    way it treats the old .claude/ special-case: the repo root is the
+    parent of .open-context/, not .open-context/ itself, so related_components
+    paths (relative to repo root) resolve correctly.
+    """
+    oc_dir = tmp_path / ".open-context"
+    oc_dir.mkdir()
+    (oc_dir / "context.yaml").write_text(SAMPLE_CONTEXT.read_text())
+
+    stdout, stderr, code = run_drift_hook(
+        str(tmp_path / "app/models/patron.rb"),
+        session_id="oc-layout",
+        cwd=str(tmp_path),
+        plugin_data=tmp_path / "plugin_data",
+    )
+    assert code == 0
+    assert stdout != b""
+    ctx = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "member_management" in ctx
+
+
+def test_session_dot_open_context_settings_no_op(tmp_path):
+    """SessionStart must treat .open-context/oc-settings.yaml the same as
+    the old .claude/oc-settings.yaml — setup already done, silent no-op."""
+    settings_dir = tmp_path / ".open-context"
+    settings_dir.mkdir()
+    (settings_dir / "oc-settings.yaml").write_text("scope: project\nlanguage: ruby\n")
+
+    stdout, stderr, code = run_session_hook(cwd=str(tmp_path))
+    assert code == 0
+    assert stdout == b""
+    assert stderr == b""
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# drift_hook.py tests (PreToolUse — Edit|Write domain-drift detection)
+# ══════════════════════════════════════════════════════════════════════════════
+
+REPO_DIR = SAMPLE_CONTEXT.parent
+
+
+def run_drift_hook(
+    file_path: str,
+    tool_name: str = "Edit",
+    session_id: str = "test-session",
+    cwd: str | None = None,
+    plugin_data: "Path | None" = None,
+    env_overrides: dict | None = None,
+) -> tuple[bytes, bytes, int]:
+    """Run drift_hook.py as a subprocess, return (stdout, stderr, returncode)."""
+    if cwd is None:
+        cwd = str(REPO_DIR)
+
+    stdin_data = json.dumps({
+        "tool_name": tool_name,
+        "tool_input": {"file_path": file_path},
+        "cwd": cwd,
+        "hook_event_name": "PreToolUse",
+        "session_id": session_id,
+    }).encode()
+
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(PLUGIN_ROOT)
+    if plugin_data is not None:
+        env["CLAUDE_PLUGIN_DATA"] = str(plugin_data)
+    if env_overrides:
+        for k, v in env_overrides.items():
+            if v is None:
+                env.pop(k, None)
+            else:
+                env[k] = v
+
+    result = subprocess.run(
+        [PYTHON, str(DRIFT_HOOK_SCRIPT)],
+        input=stdin_data,
+        capture_output=True,
+        env=env,
+    )
+    return result.stdout, result.stderr, result.returncode
+
+
+# ── D1: wrong tool → silent no-op, no session-state file touched ────────────
+def test_drift_wrong_tool_silent(tmp_path):
+    """Read/Grep/Bash must never trigger the drift hook — only Edit/Write
+    carry a reliable file_path to reason about."""
+    stdout, stderr, code = run_drift_hook(
+        str(REPO_DIR / "app/models/patron.rb"), tool_name="Read", plugin_data=tmp_path,
+    )
+    assert code == 0
+    assert stdout == b""
+    assert stderr == b""
+
+
+# ── D2: new domain, not yet surfaced → injects rules/patterns ───────────────
+def test_drift_injects_for_new_domain(tmp_path):
+    """
+    A fresh session (nothing surfaced yet) editing a file owned by
+    member_management must get that domain's rules injected.
+    """
+    stdout, stderr, code = run_drift_hook(
+        str(REPO_DIR / "app/models/patron.rb"), session_id="d2", plugin_data=tmp_path,
+    )
+    assert code == 0
+    assert stdout != b""
+    parsed = json.loads(stdout)
+
+    assert "additionalContext" not in parsed, (
+        "additionalContext must NOT be at top level — it goes inside hookSpecificOutput"
+    )
+    hs = parsed["hookSpecificOutput"]
+    assert hs.get("hookEventName") == "PreToolUse"
+    ctx = hs["additionalContext"]
+    assert "DOMAIN DRIFT" in ctx
+    assert "member_management" in ctx
+    assert "[RULES]" in ctx
+    # No fake ACTION/ACTOR section — this hook has no task text to infer them from.
+    assert "ACTION" not in ctx
+    assert "[ACTORS]" not in ctx
+
+
+# ── D3: same domain edited twice in one session → second edit is silent ─────
+def test_drift_silent_once_domain_already_surfaced(tmp_path):
+    """The first Edit in a domain injects; a second Edit in the same domain,
+    same session, must not repeat the injection."""
+    first_out, _, first_code = run_drift_hook(
+        str(REPO_DIR / "app/models/patron.rb"), session_id="d3", plugin_data=tmp_path,
+    )
+    assert first_code == 0 and first_out != b""
+
+    second_out, second_err, second_code = run_drift_hook(
+        str(REPO_DIR / "app/operations/v1/librarians/patrons/create_operation.rb"),
+        session_id="d3", plugin_data=tmp_path,
+    )
+    assert second_code == 0
+    assert second_out == b"", (
+        f"Second edit in an already-surfaced domain must be silent, got: {second_out[:200]}"
+    )
+    assert second_err == b""
+
+
+# ── D4: different sessions don't share drift state ───────────────────────────
+def test_drift_state_is_per_session(tmp_path):
+    """Two different session_ids editing the same domain must each get their
+    own injection — state must not leak across sessions."""
+    out_a, _, code_a = run_drift_hook(
+        str(REPO_DIR / "app/models/patron.rb"), session_id="session-a", plugin_data=tmp_path,
+    )
+    out_b, _, code_b = run_drift_hook(
+        str(REPO_DIR / "app/models/patron.rb"), session_id="session-b", plugin_data=tmp_path,
+    )
+    assert code_a == 0 and code_b == 0
+    assert out_a != b"" and out_b != b""
+
+
+# ── D5: domain_drift_detection: false in oc-settings.yaml → silent ───────────
+def test_drift_disabled_via_project_settings(tmp_path):
+    """Project-scope opt-out flag must fully suppress the hook, even for a
+    file path that would otherwise match a domain."""
+    project = tmp_path / "project"
+    (project / ".open-context").mkdir(parents=True)
+    (project / ".open-context" / "oc-settings.yaml").write_text(
+        "scope: project\ndomain_drift_detection: false\n"
+    )
+    (project / "context.yaml").write_text(SAMPLE_CONTEXT.read_text())
+    (project / "app" / "models").mkdir(parents=True)
+    (project / "app" / "models" / "patron.rb").touch()
+
+    stdout, stderr, code = run_drift_hook(
+        str(project / "app/models/patron.rb"),
+        session_id="d5",
+        cwd=str(project),
+        plugin_data=tmp_path / "plugin_data",
+    )
+    assert code == 0
+    assert stdout == b""
+    assert stderr == b""
+
+
+# ── D6: no context.yaml anywhere → silent, no crash ──────────────────────────
+def test_drift_no_context_yaml_silent(tmp_path):
+    stdout, stderr, code = run_drift_hook(
+        str(tmp_path / "app/models/whatever.rb"),
+        session_id="d6",
+        cwd=str(tmp_path),
+        plugin_data=tmp_path / "plugin_data",
+    )
+    assert code == 0
+    assert stdout == b""
+    assert stderr == b""
+
+
+# ── D7: file outside any domain's related_components → silent ───────────────
+def test_drift_unowned_file_silent(tmp_path):
+    stdout, stderr, code = run_drift_hook(
+        str(REPO_DIR / "app/controllers/application_controller.rb"),
+        session_id="d7",
+        plugin_data=tmp_path,
+    )
+    assert code == 0
+    assert stdout == b""
+    assert stderr == b""
+
+
+# ── D8: CLAUDE_PLUGIN_ROOT missing → stderr only, no traceback ──────────────
+def test_drift_missing_plugin_root_env(tmp_path):
+    stdout, stderr, code = run_drift_hook(
+        str(REPO_DIR / "app/models/patron.rb"),
+        session_id="d8",
+        plugin_data=tmp_path,
+        env_overrides={"CLAUDE_PLUGIN_ROOT": None},
+    )
+    assert code == 0
+    assert stdout == b""
+    assert b"CLAUDE_PLUGIN_ROOT" in stderr
+    assert b"Traceback" not in stdout
+    assert b"Traceback" not in stderr
+
+
+# ── D9: UserPromptSubmit resets drift state for the next turn ───────────────
+def test_resolve_hook_resets_drift_state_for_new_prompt(tmp_path):
+    """
+    resolve_hook.py (UserPromptSubmit) must overwrite — not merge into — the
+    session's surfaced-domain set with exactly what matched this prompt, so
+    a new task re-opens drift detection for domains the *previous* task
+    already surfaced.
+    """
+    # Turn 1: surface member_management via the drift hook.
+    run_drift_hook(
+        str(REPO_DIR / "app/models/patron.rb"), session_id="d9", plugin_data=tmp_path,
+    )
+    state_file = tmp_path / "open-context" / "session-state" / "d9.json"
+    assert state_file.exists()
+    assert "member_management" in json.loads(state_file.read_text())["domains"]
+
+    # Turn 2: a new prompt that matches a different domain must reset state
+    # to just that domain, not keep member_management around.
+    stdin_data = json.dumps({
+        "prompt": "renew book loan",
+        "user_prompt": "renew book loan",
+        "cwd": str(REPO_DIR),
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "d9",
+    }).encode()
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(PLUGIN_ROOT)
+    env["CLAUDE_PLUGIN_DATA"] = str(tmp_path)
+    subprocess.run([PYTHON, str(HOOK_SCRIPT)], input=stdin_data, capture_output=True, env=env)
+
+    state = json.loads(state_file.read_text())
+    assert state["domains"] == ["borrowing_management"], (
+        f"Expected the new prompt to reset drift state to just its own matched "
+        f"domain, got: {state['domains']}"
+    )
