@@ -18,6 +18,13 @@
   <img alt="Auto-detect: Ruby" src="https://img.shields.io/badge/auto--detect-Ruby-CC342D?style=flat-square&logo=ruby&logoColor=white">
   <img alt="Auto-detect: Node.js" src="https://img.shields.io/badge/auto--detect-Node.js-339933?style=flat-square&logo=node.js&logoColor=white">
   <img alt="Auto-detect: Python" src="https://img.shields.io/badge/auto--detect-Python-3776AB?style=flat-square&logo=python&logoColor=white">
+  <img alt="Auto-detect: Go" src="https://img.shields.io/badge/auto--detect-Go-00ADD8?style=flat-square&logo=go&logoColor=white">
+  <img alt="Auto-detect: Rust" src="https://img.shields.io/badge/auto--detect-Rust-000000?style=flat-square&logo=rust&logoColor=white">
+  <img alt="Auto-detect: Java" src="https://img.shields.io/badge/auto--detect-Java-007396?style=flat-square&logo=openjdk&logoColor=white">
+</p>
+
+<p align="center">
+  Any repo, any architecture — docs-first project profiling, no framework-specific detector required.
 </p>
 
 <p align="center">
@@ -138,7 +145,7 @@ flowchart LR
     E --> F
 ```
 
-`context.yaml` is generated under `.open-context/` by `/oc-setup` or `/oc-init` — or written by hand anywhere the hook looks (see [`examples/rails-hmvc-sample/`](examples/rails-hmvc-sample/), which keeps it at the project root as a committed reference example). PyYAML is vendored, so the hook needs no `pip install`. Full schema in [`docs/reference.md`](docs/reference.md#contextyaml).
+`context.yaml` is generated under `.open-context/` by `/oc-setup` or `/oc-init` — or written by hand anywhere the hook looks (see [`examples/`](examples/) for committed reference projects, including one with no layered architecture at all). PyYAML is vendored, so the hook needs no `pip install`. Full schema in [`docs/reference.md`](docs/reference.md#contextyaml).
 
 ---
 
@@ -157,7 +164,9 @@ flowchart LR
 
 - [`docs/reference.md`](docs/reference.md) — automated discovery detail, `context.yaml` schema, limitations, known unmeasured caveats
 - [`docs/open-context-v0-architecture.md`](docs/open-context-v0-architecture.md) — benchmark methodology
-- [`examples/rails-hmvc-sample/`](examples/rails-hmvc-sample/) — working 3-domain reference project
+- [`examples/rails-hmvc-sample/`](examples/rails-hmvc-sample/) — working reference project, layered HMVC architecture
+- [`examples/nextjs-sample/`](examples/nextjs-sample/) — working reference project, Next.js Server Actions
+- [`examples/data-pipeline-sample/`](examples/data-pipeline-sample/) — working reference project with **no** `architecture.flow` — standalone scripts, no layers
 
 ---
 

@@ -18,6 +18,13 @@
   <img alt="Auto-detect: Ruby" src="https://img.shields.io/badge/auto--detect-Ruby-CC342D?style=flat-square&logo=ruby&logoColor=white">
   <img alt="Auto-detect: Node.js" src="https://img.shields.io/badge/auto--detect-Node.js-339933?style=flat-square&logo=node.js&logoColor=white">
   <img alt="Auto-detect: Python" src="https://img.shields.io/badge/auto--detect-Python-3776AB?style=flat-square&logo=python&logoColor=white">
+  <img alt="Auto-detect: Go" src="https://img.shields.io/badge/auto--detect-Go-00ADD8?style=flat-square&logo=go&logoColor=white">
+  <img alt="Auto-detect: Rust" src="https://img.shields.io/badge/auto--detect-Rust-000000?style=flat-square&logo=rust&logoColor=white">
+  <img alt="Auto-detect: Java" src="https://img.shields.io/badge/auto--detect-Java-007396?style=flat-square&logo=openjdk&logoColor=white">
+</p>
+
+<p align="center">
+  Mọi repo, mọi kiến trúc — profile project docs-first, không cần detector riêng cho từng framework.
 </p>
 
 <p align="center">
@@ -138,7 +145,7 @@ flowchart LR
     E --> F
 ```
 
-`context.yaml` được sinh dưới `.open-context/` bởi `/oc-setup` hoặc `/oc-init` — hoặc tự viết tay ở bất cứ đâu hook tìm tới (xem [`examples/rails-hmvc-sample/`](examples/rails-hmvc-sample/), nơi file này nằm ở root và được commit làm ví dụ tham khảo). PyYAML đã vendor sẵn, không cần `pip install` cho hook. Schema đầy đủ ở [`docs/reference.md`](docs/reference.md#contextyaml) (tiếng Anh).
+`context.yaml` được sinh dưới `.open-context/` bởi `/oc-setup` hoặc `/oc-init` — hoặc tự viết tay ở bất cứ đâu hook tìm tới (xem [`examples/`](examples/) cho các project tham khảo đã commit, gồm cả 1 ví dụ hoàn toàn không có architecture layer). PyYAML đã vendor sẵn, không cần `pip install` cho hook. Schema đầy đủ ở [`docs/reference.md`](docs/reference.md#contextyaml) (tiếng Anh).
 
 ---
 
@@ -157,7 +164,9 @@ flowchart LR
 
 - [`docs/reference.md`](docs/reference.md) *(tiếng Anh)* — chi tiết automated discovery, schema `context.yaml`, limitations, các caveat chưa được đo
 - [`docs/open-context-v0-architecture.md`](docs/open-context-v0-architecture.md) *(tiếng Anh)* — phương pháp benchmark
-- [`examples/rails-hmvc-sample/`](examples/rails-hmvc-sample/) — project reference 3 domain đầy đủ
+- [`examples/rails-hmvc-sample/`](examples/rails-hmvc-sample/) — project reference, kiến trúc HMVC theo layer
+- [`examples/nextjs-sample/`](examples/nextjs-sample/) — project reference, Next.js Server Actions
+- [`examples/data-pipeline-sample/`](examples/data-pipeline-sample/) — project reference **không có** `architecture.flow` — script độc lập, không layer
 
 ---
 
