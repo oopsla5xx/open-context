@@ -2,7 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.2.0] — 2026-08-24
+## [0.3.0] — 2026-08-27
+
+Pivots from "Rails/HMVC-aware" to "any repo, any architecture" — a project's own docs (or its own code, with no docs) now drive setup instead of a fixed per-framework detector.
+
+### Added
+
+- `src/open_context/docs_discovery.py` — deterministic project-doc listing ("Việc 1"): `README.md`/`CLAUDE.md`/`AGENTS.md` at any directory depth plus every `.md` under any `docs/` directory, skipping `node_modules`/`vendor`/`.git`/`dist`/`build`/`.open-context`. No LLM, no scoring — pure glob, same code-vs-LLM split that shaped the original Phase 4a/4b design. New CLI subcommand `open-context discover-docs --repo <path> [--json]`.
+- Phase 4a stack detection (`discovery.py`) extended to Go (`go.mod`), Rust (`Cargo.toml`), and Java (`pom.xml`/`build.gradle[.kts]`) — same `{value, confidence, source}` per-field shape as the existing Ruby/Node/Python detectors, Maven preferred over Gradle when both are present.
+- `schema.py` now requires a `source:` field on every `rules[]` entry and every `patterns[]` entry (domain- or subtype-level) — traceability for what a generated rule/pattern was actually derived from (a doc path or, for the no-docs fallback, a code file path), not an unattributed LLM summary.
+- `examples/data-pipeline-sample/` — new reference example with **no** `architecture.flow` at all (a standalone-scripts repo, no controller/model layering), demonstrating the no-layer case end to end: real `AGENTS.md`/`docs/rules/*.md`, `context.yaml` with accurate `source:` citations, passing `tests/`.
+- `tests/test_docs_discovery.py`, `tests/test_schema.py` — new unit-test files (23 tests total) covering the new module and the schema's traceability/optional-flow rules.
+
+### Changed
+
+- `/oc-setup`'s wizard drops from up to 6 questions to 3: scope, communication language, and a single synthesized "project profile" (language/framework/architecture/actors) with one Yes/Edit/Regenerate confirm. The profile reads `discover-docs`'s output first — falling back to reading source code directly (the way a new engineer would) when a repo has no docs at all. This replaces the old separate language/framework question, the architecture-pattern question, and the actor-roles question.
+- `/oc-init` gets the same docs-first + code-fallback discovery logic as `/oc-setup`, still fully non-interactive.
+- `architecture.flow` (L2) is now optional in `schema.py` and `resolver.py` — a repo with no clear layered architecture can omit L2 entirely; the resolver degrades to an empty component chain instead of erroring. `examples/rails-hmvc-sample/` and `examples/nextjs-sample/` were backfilled with `source:` citations (from their existing `context-decisions.md` files) to satisfy the new schema requirement.
+- `README.md`/`README.vi.md`: badges and example links updated for Go/Rust/Java auto-detect and the new `data-pipeline-sample`/`nextjs-sample` references.
+
+### Removed (breaking)
+
+- **`architecture_discovery.py` (Phase 4b, Rails-only component-chain discovery) is deleted, not deprecated.** It never generalized past Rails and is fully replaced by the docs-first + code-reading Question 3 above.
+- **The 6-rule HMVC compliance validator is deleted** — `validator.py`'s `run_arch_validate`/R1–R6 checks, the `open-context architecture validate` and `open-context architecture discover` CLI subcommands, and the `/oc-validate-architecture` skill are all gone. This repo no longer ships any Rails-specific tooling.
+- No migration path for either removal — a project relying on `architecture validate`/`architecture discover` needs to pin an earlier version or maintain that logic itself.
 
 ### Added
 
