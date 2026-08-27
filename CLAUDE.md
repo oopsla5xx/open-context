@@ -127,7 +127,7 @@ Gated by `domain_drift_detection` in `oc-settings.yaml`/`settings.json` (`hook_u
 
 1. **Tokenize** — lowercase, split on non-alphanumeric, remove stop words
 2. **Score domains** — exact match, underscore-part of compound keyword, prefix either direction
-3. **Filter** — threshold = `max(2, top_score × 0.66)`; domains below discarded
+3. **Filter** — threshold = `max(2, top_score × 0.66)`; domains below discarded. Exception: when nothing clears that floor at all (`top_score < 2`), a domain whose lone matched keyword no other domain shares routes anyway (`domain_unique_keywords()`) — fixes a confirmed real-world gap where a perfectly unambiguous single-keyword phrasing (e.g. "disconnect an integration") never routed (`docs/nextjs-real-world-test-report.md`, Finding A). Scoped narrowly to "nothing else would route anyway" — an incidental domain-unique word riding along in a sentence that already has a dominant match elsewhere does NOT also get injected.
 4. **Match subtypes** — same scoring within each surviving domain
 5. **Build component chain** — `architecture.flow` + `extra_components` from matched domains
 6. **Infer files** — priority: subtype `related_components` → domain paths → domain directories

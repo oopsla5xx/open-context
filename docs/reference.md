@@ -65,7 +65,7 @@ All benchmark numbers referenced in [`open-context-v0-architecture.md`](open-con
 
 ## Limitations
 
-**Keyword ceiling.** Tasks phrased with synonyms or colloquial language may score below threshold and inject nothing. Run `/oc-validate` regularly to catch phrasing gaps.
+**Keyword ceiling.** Tasks phrased with synonyms or colloquial language may score below threshold and inject nothing. Partially mitigated: a phrasing with exactly one keyword hit now still routes if that keyword belongs to only one domain (real, unambiguous evidence) — but a task using none of a domain's keywords at all, or only a keyword shared across domains, still scores too low. Run `/oc-validate` regularly to catch remaining phrasing gaps.
 
 ---
 

@@ -143,6 +143,37 @@ def score_domain(domain: dict, tokens: list[str]) -> tuple[int, list[str]]:
     return score, matched
 
 
+def domain_unique_keywords(domains: list[dict]) -> dict[str, set[str]]:
+    """
+    For each domain, the subset of its own keywords that no OTHER domain in
+    this context.yaml also lists.
+
+    Exists to fix a confirmed real-world routing gap (see
+    docs/nextjs-real-world-test-report.md, Finding A): the domain-level
+    threshold below has an unconditional floor of 2 keyword hits, so a
+    perfectly unambiguous single-keyword phrasing like "disconnect an
+    integration" (exact match on `integration`, score=1) never routes,
+    purely because it only carries one signal word. A keyword no other
+    domain shares isn't "noise" the floor exists to filter out — it's
+    structurally unambiguous regardless of how many other keywords happened
+    to also match. This is computed from data already in context.yaml (no
+    new schema field, no authoring burden), same "derive it, don't guess
+    it" posture as everything else in this module.
+    """
+    keyword_domain_counts: dict[str, int] = {}
+    for domain in domains:
+        for kw in set(domain.get("keywords", [])):
+            keyword_domain_counts[kw] = keyword_domain_counts.get(kw, 0) + 1
+
+    return {
+        domain["name"]: {
+            kw for kw in domain.get("keywords", [])
+            if keyword_domain_counts.get(kw, 0) == 1
+        }
+        for domain in domains
+    }
+
+
 def match_subtypes(domains: list[dict], tokens: list[str]) -> list[dict]:
     """
     For each matched domain that has a 'subtypes' list, find the best-matching
@@ -435,7 +466,27 @@ def resolve(task: str, context: dict, *, include_all_domains: bool = False) -> d
         # with a minimum absolute score of 2.
         top_score = scored[0][0] if scored else 0
         threshold = max(2, top_score * 0.66)
-        scored = [(s, d, kws) for s, d, kws in scored if s >= threshold]
+
+        if top_score < 2:
+            # Nothing cleared the standard floor at all. A domain whose lone
+            # matched keyword isn't shared by any other domain is real,
+            # unambiguous signal — not the kind of noise the floor exists to
+            # filter (see domain_unique_keywords()'s docstring). Scoped
+            # narrowly to "nothing else would route anyway": when a
+            # dominant match already exists elsewhere (top_score >= 2), an
+            # incidental domain-unique word riding along in the same
+            # sentence should NOT also inject that domain — confirmed by a
+            # real regression this exact case caused against
+            # examples/rails-hmvc-sample/ ("renew book loan" must resolve
+            # to borrowing_management only, not also catalog_management
+            # just because "book" happens to be catalog's only claim on it).
+            unique_kws = domain_unique_keywords(context.get("domains", []))
+            scored = [
+                (s, d, kws) for s, d, kws in scored
+                if unique_kws.get(d["name"], set()).intersection(kws)
+            ]
+        else:
+            scored = [(s, d, kws) for s, d, kws in scored if s >= threshold]
 
     matched_domains: list[dict] = [d for _, d, _ in scored]
     match_info: list[dict] = [
