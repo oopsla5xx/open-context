@@ -23,6 +23,23 @@ def _check_dead_keywords(label: str, keywords: list) -> list[str]:
     return errors
 
 
+def _check_pattern_sources(label: str, patterns: list) -> list[str]:
+    """
+    Every pattern must cite the file it was derived from (source:) —
+    traceability for docs-first synthesis: a reader should be able to
+    check `source:` against the cited file rather than trust an
+    unattributed LLM summary. Same requirement as rules[].source.
+    """
+    errors = []
+    for i, p in enumerate(patterns):
+        if isinstance(p, dict) and not p.get("source"):
+            errors.append(
+                f"{label}.patterns[{i}] ({p.get('id', '?')}): missing 'source' — every pattern must "
+                f"cite the file it was derived from (a doc path, or a code file for the no-docs fallback)"
+            )
+    return errors
+
+
 def validate_context(ctx: dict) -> list[str]:
     """
     Validate the structure of a context.yaml dict.
@@ -40,12 +57,12 @@ def validate_context(ctx: dict) -> list[str]:
     elif not project.get("name"):
         errors.append("project.name is required")
 
-    # L2 — architecture
-    arch = ctx.get("architecture")
-    if not arch:
-        errors.append("missing required key: 'architecture'")
-    elif not isinstance(arch.get("flow"), list) or not arch["flow"]:
-        errors.append("architecture.flow must be a non-empty list of component names")
+    # L2 — architecture (optional: a repo with no clear layered architecture
+    # can omit 'architecture' entirely, or leave 'flow' empty/absent — domains
+    # still route on keywords/related_components/patterns without it)
+    arch = ctx.get("architecture") or {}
+    if "flow" in arch and not isinstance(arch["flow"], list):
+        errors.append("architecture.flow must be a list of component names when present")
 
     # L3 — domains
     domains = ctx.get("domains")
@@ -61,9 +78,13 @@ def validate_context(ctx: dict) -> list[str]:
                 errors.append(f"domains[{i}] ({d.get('name', '?')}): 'keywords' must be a list")
             else:
                 errors += _check_dead_keywords(f"domains[{i}] ({d.get('name', '?')})", d.get("keywords", []))
+            errors += _check_pattern_sources(f"domains[{i}] ({d.get('name', '?')})", d.get("patterns", []))
             for j, st in enumerate(d.get("subtypes", [])):
                 errors += _check_dead_keywords(
                     f"domains[{i}].subtypes[{j}] ({st.get('name', '?')})", st.get("keywords", [])
+                )
+                errors += _check_pattern_sources(
+                    f"domains[{i}].subtypes[{j}] ({st.get('name', '?')})", st.get("patterns", [])
                 )
 
     # L4 — rules (optional but validated if present)
@@ -76,5 +97,10 @@ def validate_context(ctx: dict) -> list[str]:
                 errors.append(f"rules[{i}]: missing 'id'")
             if not r.get("description"):
                 errors.append(f"rules[{i}] ({r.get('id', '?')}): missing 'description'")
+            if not r.get("source"):
+                errors.append(
+                    f"rules[{i}] ({r.get('id', '?')}): missing 'source' — every rule must cite the "
+                    f"file it was derived from (a doc path, or a code file for the no-docs fallback)"
+                )
 
     return errors

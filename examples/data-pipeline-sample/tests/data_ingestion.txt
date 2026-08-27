@@ -1,0 +1,5 @@
+# Format: phrasing|expected_domain
+ingest new orders from upstream|data_ingestion
+extract data from the source api|data_ingestion
+fetch orders from upstream sync|data_ingestion
+sync upstream orders|data_ingestion

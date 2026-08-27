@@ -471,7 +471,10 @@ def resolve(task: str, context: dict, *, include_all_domains: bool = False) -> d
         actors = [default_actor]
 
     # ── 3. Component chain ───────────────────────────────────────────────────
-    base_flow: list[str] = list(context["architecture"]["flow"])
+    # architecture.flow is optional (a repo with no clear layered architecture
+    # may omit it entirely) — degrades to an empty base chain, extended below
+    # only by whatever extra_components matched domains declare.
+    base_flow: list[str] = list(context.get("architecture", {}).get("flow", []) or [])
     domain_names: set[str] = {d["name"] for d in matched_domains}
 
     for d in matched_domains:

@@ -215,6 +215,7 @@ domains:
               Check book.copy_count > 0 INSIDE with_lock block.
               Decrement copy_count and create Loan record in a single transaction.
               Never read copy_count outside the lock — stale reads cause oversell.
+            source: context-decisions.md
       - name: renewal_copy
         keywords: [renew, renewal, extend]
         related_components:
@@ -242,6 +243,7 @@ domains:
             description: >
               Member search endpoints return open-ended sets.
               Always paginate with .page(params[:page]).
+            source: context-decisions.md
 
 # ══════════════════════════════════════════════════════════════════════════════
 # L4 — INVARIANTS
@@ -252,11 +254,13 @@ rules:
     description: Controllers must not contain business logic. All logic delegated to Operation.
     applies_to: [controller]
     severity: critical
+    source: context-decisions.md
 
   - id: rule-02-one-operation-per-action
     description: Each controller action must instantiate exactly one Operation.
     applies_to: [controller]
     severity: critical
+    source: context-decisions.md
 
   - id: rule-03-step-method-structure
     description: >
@@ -264,17 +268,20 @@ rules:
       Implementation goes in private step_* methods.
     applies_to: [operation]
     severity: critical
+    source: context-decisions.md
 
   - id: rule-04-validate-before-mutate
     description: >
       Operation must call Form.valid! before any write to DB, mailer, or job.
     applies_to: [operation]
     severity: critical
+    source: context-decisions.md
 
   - id: rule-05-form-validation-only
     description: Forms must only validate. No saves, no email, no jobs.
     applies_to: [form]
     severity: critical
+    source: context-decisions.md
 
   - id: rule-06-borrowing-with-lock
     description: >
@@ -284,6 +291,7 @@ rules:
     applies_to: [operation]
     domain: [borrowing_management]
     severity: critical
+    source: context-decisions.md
     guidance: |
       Book.find(book_id).with_lock do
         form.valid!               # validate INSIDE the lock (TOCTOU prevention)

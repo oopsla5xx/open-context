@@ -1,0 +1,5 @@
+# Format: phrasing|expected_domain
+generate the revenue report|report_generation
+export report to dashboard|report_generation
+build report dashboard for revenue|report_generation
+add a new dashboard report|report_generation

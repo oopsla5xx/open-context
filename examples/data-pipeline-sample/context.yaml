@@ -1,0 +1,83 @@
+---
+# Open:Context — Example Context Model
+# Domain: Analytics Pipeline (no-layer sample — standalone scripts, not a web app)
+# Purpose: Demonstrates a context.yaml with no L2 architecture.flow — a repo
+# with no clear layered architecture routes purely on domains/keywords/patterns.
+# Not real production data — replace with your own project details.
+
+# ══════════════════════════════════════════════════════════════════════════════
+# L1 — STACK
+# ══════════════════════════════════════════════════════════════════════════════
+
+project:
+  name: analytics-pipeline
+  language: python
+  language_version: "3.11"
+  api_mode: false
+  default_actor: engineer   # fallback when no domain matched
+
+# ══════════════════════════════════════════════════════════════════════════════
+# L2 — ARCHITECTURE
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Deliberately absent: this repo is a bag of standalone scripts, each owning
+# its input/transform/output end to end — there is no controller/model-style
+# layering to declare a flow for. See AGENTS.md.
+
+# ══════════════════════════════════════════════════════════════════════════════
+# L3 — DOMAINS
+# ══════════════════════════════════════════════════════════════════════════════
+
+domains:
+  - name: data_ingestion
+    coverage_level: pattern_indexed
+    keywords: [ingest, ingestion, extract, source_pull, fetch_orders, upstream_sync]
+    typical_actors: [engineer]
+    related_components:
+      - scripts/ingest/pull_orders.py
+    patterns:
+      - id: idempotent_ingestion
+        description: >
+          Upsert on the upstream source's natural key — never a plain
+          append-only insert. The scheduler retries failed runs
+          automatically, so a script must be safe to run twice on the
+          same window without creating duplicate rows.
+        source: docs/rules/ingestion-checklist.md
+
+  - name: report_generation
+    coverage_level: pattern_indexed
+    keywords: [report, reporting, dashboard, export_report, generate_report, revenue_report]
+    typical_actors: [engineer]
+    related_components:
+      - scripts/reports/revenue_report.py
+    patterns:
+      - id: cache_before_export
+        description: >
+          Cache the intermediate aggregation to cache/<report_name>.parquet
+          before writing the final export — reports are re-run manually
+          when someone disputes a number, and re-aggregating from raw rows
+          every time is both slow and non-deterministic if upstream data
+          changed underneath the re-run.
+        source: AGENTS.md
+
+# ══════════════════════════════════════════════════════════════════════════════
+# L4 — INVARIANTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+rules:
+  - id: rule-01-no-prod-credentials-committed
+    description: >
+      Never use production database credentials in a script committed to
+      this repo. Scripts read DATABASE_URL from the environment; local
+      development uses a gitignored .env.local file.
+    severity: critical
+    source: AGENTS.md
+
+  - id: rule-02-bounded-ingestion-window
+    description: >
+      Ingestion scripts must accept an explicit --since/--until window,
+      never default to "everything since the beginning of time" — a
+      re-run must have a bounded, predictable cost.
+    domain: [data_ingestion]
+    severity: warning
+    source: docs/rules/ingestion-checklist.md

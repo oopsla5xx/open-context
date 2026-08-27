@@ -139,6 +139,7 @@ domains:
               Moving a task between columns must shift sibling `order` values
               inside a single prisma.$transaction. Updating the moved task's
               order alone lets two concurrent drags collide on the same value.
+            source: context-decisions.md
 
   - name: team_billing
     coverage_level: pattern_indexed
@@ -165,12 +166,14 @@ domains:
           deliveries can both pass the check and push the team over its
           limit. Fold the check into the WHERE clause of a single UPDATE
           (prisma.$executeRaw) so the database decides atomically.
+        source: context-decisions.md
       - id: owner_only_plan_change
         description: >
           Changing a team's billing plan is owner-only. Every Server Action
           that mutates TeamBilling must call requireOwner(actorRole) from
           lib/actor.ts before touching the service layer — framework-level
           CSRF checks are not an authorization boundary.
+        source: "context-decisions.md (cites Next.js guides/server-actions.md, guides/data-security.md)"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # L4 — INVARIANTS
@@ -181,11 +184,13 @@ rules:
     description: Server Actions must not call prisma.* directly. All persistence delegated to a service function.
     applies_to: [server_action]
     severity: critical
+    source: context-decisions.md
 
   - id: rule-02-validate-before-service
     description: Every Server Action must parse its input through the domain's Zod schema before calling the service layer.
     applies_to: [server_action, validation]
     severity: critical
+    source: context-decisions.md
 
   - id: rule-03-transactional-reorder
     description: >
@@ -194,6 +199,7 @@ rules:
     applies_to: [service]
     domain: [task_management]
     severity: critical
+    source: context-decisions.md
 
   - id: rule-04-atomic-usage-check
     description: >
@@ -203,6 +209,7 @@ rules:
     applies_to: [service]
     domain: [team_billing]
     severity: critical
+    source: context-decisions.md
     guidance: |
       await prisma.$executeRaw`
         UPDATE TeamBilling
@@ -216,6 +223,7 @@ rules:
     applies_to: [server_action]
     domain: [team_billing]
     severity: critical
+    source: "context-decisions.md (cites Next.js guides/server-actions.md, guides/data-security.md)"
 
   - id: rule-06-revalidate-after-mutation
     description: >
@@ -224,3 +232,4 @@ rules:
       reflects the change in the same round trip.
     applies_to: [server_action]
     severity: warning
+    source: context-decisions.md
