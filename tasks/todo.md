@@ -125,13 +125,13 @@ scored/confidence result (there's nothing uncertain about "this file
 exists").
 
 **Acceptance criteria:**
-- [ ] `discover_docs(repo: Path) -> dict` returns e.g. `{"repo": str, "docs_found": [{"path": "app/policies/AGENTS.md", "kind": "AGENTS.md"|"CLAUDE.md"|"README.md"|"docs_md"}, ...]}`
-- [ ] Ignored directories are never descended into (verify with a test asserting a `node_modules/README.md` is absent from results, not just filtered post-hoc)
-- [ ] Case-insensitive filename matching for the 3 fixed names (mirrors the user's original `find -iname` proposal)
+- [x] `discover_docs(repo: Path) -> dict` returns e.g. `{"repo": str, "docs_found": [{"path": "app/policies/AGENTS.md", "kind": "AGENTS.md"|"CLAUDE.md"|"README.md"|"docs_md"}, ...]}`
+- [x] Ignored directories are never descended into (verify with a test asserting a `node_modules/README.md` is absent from results, not just filtered post-hoc)
+- [x] Case-insensitive filename matching for the 3 fixed names (mirrors the user's original `find -iname` proposal)
 
 **Verification:**
-- [ ] Tests pass: `/usr/bin/env python3 -m pytest tests/test_docs_discovery.py -v`
-- [ ] Manual check: run against this repo itself, confirm `examples/rails-hmvc-sample/context-decisions.md` type files are NOT picked up (only `docs/**/*.md` and the 3 fixed names — `context-decisions.md` matches neither pattern, confirm this is the intended boundary)
+- [x] Tests pass: `/usr/bin/env python3 -m pytest tests/test_docs_discovery.py -v`
+- [x] Manual check: ran against this repo itself — `context-decisions.md`-type files correctly not picked up (matches neither the 3 fixed names nor `docs/**/*.md`)
 
 **Dependencies:** None (independent of PR1)
 
@@ -150,13 +150,13 @@ CLI wiring) — same `--repo` arg, same `--json` flag behavior, same exit-code
 conventions.
 
 **Acceptance criteria:**
-- [ ] `open-context discover-docs --repo <path>` prints human-readable output
-- [ ] `open-context discover-docs --repo <path> --json` prints valid JSON matching Task 4's shape
-- [ ] `open-context --help` lists the new subcommand
+- [x] `open-context discover-docs --repo <path>` prints human-readable output
+- [x] `open-context discover-docs --repo <path> --json` prints valid JSON matching Task 4's shape
+- [x] `open-context --help` lists the new subcommand
 
 **Verification:**
-- [ ] Tests pass: `/usr/bin/env python3 -m pytest tests/ -v` (add a subprocess-boundary test in `tests/test_hook_integration.py`-style if that file is where other CLI subcommands get their subprocess test, else confirm placement first)
-- [ ] Manual check: `open-context discover-docs --repo examples/rails-hmvc-sample --json | python3 -m json.tool`
+- [x] Tests pass: `/usr/bin/env python3 -m pytest tests/ -v` — confirmed `test_hook_integration.py` only subprocess-tests the 3 hooks, never CLI subcommands (not even `detect`), so no subprocess test added for `discover-docs` either, matching existing convention
+- [x] Manual check: `open-context discover-docs --repo . --json` returns valid JSON
 
 **Dependencies:** Task 4
 
@@ -177,11 +177,11 @@ all 3 fixed names at various depths, `docs/**/*.md` including nested dirs
 (`node_modules/README.md` must not appear), case-insensitivity.
 
 **Acceptance criteria:**
-- [ ] `tests/test_docs_discovery.py` exists, follows `test_discovery.py`'s header/import style
-- [ ] At least one test per: empty repo, nested AGENTS.md, `docs/rules/*.md`, ignored-dir exclusion, case-insensitive match
+- [x] `tests/test_docs_discovery.py` exists, follows `test_discovery.py`'s header/import style
+- [x] At least one test per: empty repo, nested AGENTS.md, `docs/rules/*.md`, ignored-dir exclusion, case-insensitive match (8 tests total, includes the `context-decisions.md` boundary check too)
 
 **Verification:**
-- [ ] Tests pass: `/usr/bin/env python3 -m pytest tests/test_docs_discovery.py -v`
+- [x] Tests pass: `/usr/bin/env python3 -m pytest tests/test_docs_discovery.py -v` (8/8)
 
 **Dependencies:** Task 4
 
@@ -193,8 +193,8 @@ all 3 fixed names at various depths, `docs/**/*.md` including nested dirs
 ---
 
 ## Checkpoint: PR2 complete
-- [ ] `/usr/bin/env python3 -m pytest tests/test_docs_discovery.py -v` passes
-- [ ] `open-context discover-docs --repo examples/rails-hmvc-sample --json` returns real, correct output
+- [x] `/usr/bin/env python3 -m pytest tests/ -v` passes (50/50, full suite)
+- [x] `open-context discover-docs --repo . --json` returns real, correct output
 - [ ] Review with human before starting PR3
 
 ---

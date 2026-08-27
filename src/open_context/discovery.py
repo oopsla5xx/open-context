@@ -12,10 +12,10 @@ recoverable from prose docs (CLAUDE.md/AGENTS.md/README.md) is markedly
 less certain, and callers should treat it accordingly.
 
 Non-recursive by design: detect() only reads files directly under the given
-repo path, mirroring `architecture validate --repo --path` — a monorepo
-with multiple ecosystems in different subdirectories (e.g. a Python
-backend/ next to a Next.js frontend-nextjs/) is handled by calling detect()
-once per subdirectory, not by one call auto-discovering every ecosystem.
+repo path — a monorepo with multiple ecosystems in different subdirectories
+(e.g. a Python backend/ next to a Next.js frontend-nextjs/) is handled by
+calling detect() once per subdirectory, not by one call auto-discovering
+every ecosystem.
 
 Known limitation (not handled — no heuristic exists yet to detect this
 reliably): a root-level package.json in a monorepo can be a thin wrapper

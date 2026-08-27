@@ -14,6 +14,10 @@ Commands:
       framework from structured config files (Gemfile, package.json,
       pyproject.toml/requirements.txt), with a per-field confidence score.
       Non-recursive: only reads files directly under --repo.
+
+  discover-docs [--repo PATH] [--json]
+      List README.md/CLAUDE.md/AGENTS.md (any depth) and docs/**/*.md —
+      a deterministic file listing only, no content read, no LLM.
 """
 
 import sys
@@ -27,6 +31,7 @@ from .resolver import load_context, resolve, format_report
 from .validator import run_phrasing_tests, run_amplification_checks, check_file_existence
 from .schema import validate_context
 from .discovery import detect
+from .docs_discovery import discover_docs
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -236,6 +241,33 @@ def cmd_detect(args):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# discover-docs
+# ─────────────────────────────────────────────────────────────────────────────
+
+def cmd_discover_docs(args):
+    repo = Path(args.repo).resolve() if args.repo else Path.cwd()
+    result = discover_docs(repo)
+    sep = "─" * 72
+
+    print(sep)
+    print(f"open-context discover-docs — {result['repo']}")
+    print(sep)
+
+    if not result["docs_found"]:
+        print("\n  No README.md/CLAUDE.md/AGENTS.md or docs/**/*.md found.")
+    else:
+        print(f"\n  {'Path':<50} {'Kind'}")
+        print("  " + "-" * 64)
+        for d in result["docs_found"]:
+            print(f"  {d['path']:<50} {d['kind']}")
+
+    print(sep)
+
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -301,6 +333,16 @@ def main():
                           help="Repo path to scan, non-recursive (default: current directory)")
     p_detect.add_argument("--json", action="store_true", help="Also print JSON results")
     p_detect.set_defaults(func=cmd_detect)
+
+    # discover-docs
+    p_discover_docs = sub.add_parser(
+        "discover-docs",
+        help="List README.md/CLAUDE.md/AGENTS.md and docs/**/*.md (deterministic, no LLM)",
+    )
+    p_discover_docs.add_argument("--repo", metavar="PATH", default=None,
+                                 help="Repo path to scan, recursive (default: current directory)")
+    p_discover_docs.add_argument("--json", action="store_true", help="Also print JSON results")
+    p_discover_docs.set_defaults(func=cmd_discover_docs)
 
     args = parser.parse_args()
     args.func(args)
