@@ -427,14 +427,14 @@ description since that's now formalized as the docs-first + fallback logic
 above, not an ad-hoc scan order.
 
 **Acceptance criteria:**
-- [ ] Q1 and Q2 text unchanged from current SKILL.md
-- [ ] Q3/Q4/Q5 replaced by one documented step that calls `discover-docs`, synthesizes a draft, and gates on Yes/Edit/Regenerate
-- [ ] SKILL.md explicitly documents the no-docs fallback (read source code, cite code file as `source:`)
-- [ ] Every generated rule/pattern in the documented flow is required to carry `source:`
-- [ ] Phase 5 validate loop (Iteration 1-3) description unchanged — out of scope for this task
+- [x] Q1 and Q2 text unchanged from current SKILL.md
+- [x] Q3/Q4/Q5 replaced by one documented step (Question 3) that calls `discover-docs`, synthesizes a draft, and gates on Yes/Edit/Regenerate
+- [x] SKILL.md explicitly documents the no-docs fallback (read source code, cite code file as `source:`)
+- [x] Every generated rule/pattern in the documented flow is required to carry `source:`
+- [x] Phase 5 validate loop (Iteration 1-3) description unchanged — out of scope for this task
 
 **Verification:**
-- [ ] Manual check: dry-run `/oc-setup` (per plan.md's final checkpoint) on a real repo with docs and one without, confirm the flow in SKILL.md is actually followed
+- [ ] Manual check: dry-run `/oc-setup` on a real repo with docs and one without — **NOT YET DONE**, this is an interactive skill (multi-turn Q&A), not a pytest-covered code path; left for the plan's separate "final verification" checkpoint below, which needs the user's actual involvement in the wizard's questions rather than self-simulated answers
 
 **Dependencies:** Task 5 (`discover-docs` CLI must exist), Task 10 (schema must enforce `source:`), Task 11 (flow must be optional for repos without one)
 
@@ -456,12 +456,12 @@ behavior unchanged; only the doc/code-reading and `source:` citation logic
 changes.
 
 **Acceptance criteria:**
-- [ ] SKILL.md documents the same docs-first + fallback logic as Task 14, cross-referenced rather than duplicated if practical
-- [ ] No new interactive wizard questions introduced (oc-init stays non-interactive)
-- [ ] Generated rules/patterns carry `source:` same as oc-setup's output
+- [x] SKILL.md documents the same docs-first + fallback logic as Task 14, cross-referenced (points back to `/oc-setup`'s file for the full rationale) rather than duplicated
+- [x] No new interactive wizard questions introduced (oc-init stays non-interactive)
+- [x] Generated rules/patterns carry `source:` same as oc-setup's output
 
 **Verification:**
-- [ ] Manual check: dry-run `/oc-init` against an existing `.open-context/oc-settings.yaml`, confirm generated context.yaml has `source:` citations
+- [ ] Manual check: dry-run `/oc-init` — same status as Task 14's verification, deferred to the final verification checkpoint
 
 **Dependencies:** Task 14 (defines the shared docs-first logic this task reuses)
 
@@ -485,12 +485,13 @@ against Task 3's PR1 sweep — this task is the final consistency pass after
 all 4 other PRs, not a duplicate of Task 3).
 
 **Acceptance criteria:**
-- [ ] CLAUDE.md accurately describes the codebase as it exists after PR1-PR5, with no stale references
-- [ ] New `docs_discovery.py` module documented in the "Repository Layout" / "Source Layout" tables
-- [ ] `source:` field documented as part of the Four-Layer Model description
+- [x] CLAUDE.md accurately describes the codebase as it exists after PR1-PR5, with no stale references
+- [x] New `docs_discovery.py` module documented in the "Repository Layout" / "Source Layout" tables
+- [x] `source:` field documented as part of the Four-Layer Model description
+- [x] Also swept `docs/reference.md`, `README.md`, `README.vi.md` — found and fixed stale Ruby/Node/Python-only and "up to 6/7 questions" claims left over from before PR3/PR5 landed (not caught by PR1's earlier sweep since those PRs didn't exist yet)
 
 **Verification:**
-- [ ] Manual check: read CLAUDE.md top to bottom against the actual final codebase, confirm no discrepancies
+- [x] Manual check: read CLAUDE.md top to bottom against the actual final codebase; `grep` swept for "up to 6/7 question", "Rails-only architecture", "architecture-chain auto-discovery" across CLAUDE.md/README*.md/docs//.claude/skills/ — 0 matches
 
 **Dependencies:** Task 14, Task 15 (must describe the final wizard flow accurately)
 
@@ -502,8 +503,13 @@ all 4 other PRs, not a duplicate of Task 3).
 ---
 
 ## Checkpoint: PR5 complete / final verification
+
+All 5 PRs' code/schema/skill-doc changes are committed (65/65 pytest passing throughout). **Not yet done** — the interactive dry run, which needs the user's real participation (the wizard asks real Yes/Edit/Regenerate questions, not something to self-simulate):
+
 - [ ] Run `/oc-setup` on ≥1 real repo with good docs — confirm generated `context.yaml`'s `source:` citations point at real files that were actually read
 - [ ] Run `/oc-setup` on ≥1 real repo with no AGENTS/CLAUDE/README/docs — confirm the code-reading fallback produces a usable `context.yaml` with `source:` pointing at code files
 - [ ] `open-context validate` passes on both generated files
-- [ ] All acceptance criteria across PR1-PR5 met
-- [ ] Release process (per CLAUDE.md) followed: CHANGELOG.md entry, version bump, tag, GitHub release
+- [x] All acceptance criteria across PR1-PR5's code/doc tasks met (interactive dry-run tasks excepted, tracked above)
+- [ ] Release process (per CLAUDE.md) followed: CHANGELOG.md entry, version bump, tag, GitHub release — not started, waiting on the dry-run above first
+
+Partial substitute evidence already in hand: `examples/data-pipeline-sample/` is a hand-built but structurally faithful proof of the docs-first path (real `AGENTS.md`/`docs/rules/*.md` → `context.yaml` with accurate `source:` citations → validates clean) — it exercises the same schema/traceability machinery the live wizard will produce, just authored directly rather than through the interactive skill.

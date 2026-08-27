@@ -26,7 +26,8 @@ echo '{"tool_name":"Edit","tool_input":{"file_path":"/path/to/project/app/models
 # CLI (after pip install -e ., or PYTHONPATH="src:vendor" python3 -m open_context.cli ...)
 open-context resolve "renew book loan" --context examples/rails-hmvc-sample/context.yaml
 open-context validate --context examples/rails-hmvc-sample/context.yaml --tests examples/rails-hmvc-sample/tests/
-open-context detect --repo /path/to/project                    # Phase 4a — stack detection (Ruby/Node/Python)
+open-context detect --repo /path/to/project                    # Phase 4a — stack detection (Ruby/Node/Python/Go/Rust/Java)
+open-context discover-docs --repo /path/to/project              # Việc 1 — list README/CLAUDE/AGENTS.md + docs/**/*.md
 # All CLI commands accept --json
 ```
 
@@ -62,8 +63,9 @@ This repo is both the CLI package (`src/open_context/`) and the Claude Code plug
 | `.claude-plugin/plugin.json` | Plugin manifest (version, hooks path, skills path) |
 | `vendor/yaml/` | Vendored PyYAML 6.0.3 — pure Python only, MIT license in `vendor/PYYAML_LICENSE` |
 | `tests/test_hook_integration.py` | Integration tests — run hooks as real subprocesses |
-| `tests/test_discovery.py` | Unit tests (direct import, not subprocess) for Phase 4a discovery module |
-| `examples/rails-hmvc-sample/` | Working 3-domain reference: library management API |
+| `tests/test_discovery.py`, `tests/test_docs_discovery.py`, `tests/test_schema.py` | Unit tests (direct import, not subprocess) for `discovery.py`, `docs_discovery.py`, `schema.py` |
+| `examples/rails-hmvc-sample/`, `examples/nextjs-sample/` | Working layered-architecture references (Rails HMVC, Next.js Server Actions) |
+| `examples/data-pipeline-sample/` | Working no-layer reference — standalone scripts, no `architecture.flow` |
 
 ## Plugin Architecture
 
@@ -105,8 +107,8 @@ Gated by `domain_drift_detection` in `oc-settings.yaml`/`settings.json` (`hook_u
 
 | Skill | What it does |
 |-------|--------------|
-| `oc-setup` | Phase 0 runs `detect` to pre-fill Question 3 with real evidence, never auto-written → wizard (up to 6 questions, architecture asked blind) → generates settings + `context.yaml` + test files → validate loop (patch → retest → ask, max 3 rounds) |
-| `oc-init` | Reads existing settings, scans docs/code, generates `context.yaml` + tests, validates |
+| `oc-setup` | Phase 0 runs `detect` + `discover-docs` to gather evidence, never auto-written → wizard (3 questions: scope, communication language, then one synthesized project-profile confirm built from docs — or source code as fallback — with a Yes/Edit/Regenerate gate) → generates settings + `context.yaml` + test files → validate loop (patch → retest → ask, max 3 rounds) |
+| `oc-init` | Reads existing settings, then the same docs-first (+ code fallback) discovery as `/oc-setup`, generates `context.yaml` + tests, validates — non-interactive, no wizard |
 | `oc-resolve` | Debug routing for a given task — shows all domain scores including below-threshold |
 | `oc-validate` | Phrasing coverage + amplification safety check |
 
@@ -116,9 +118,10 @@ Gated by `domain_drift_detection` in `oc-settings.yaml`/`settings.json` (`hook_u
 |------|---------------|
 | `resolver.py` | Core routing: tokenize → score → filter → match subtypes → build component chain → infer files. Also `domains_by_path()` (path → domain reverse-lookup) and `format_drift_report()`, used by the drift hook, not the prompt-time flow |
 | `validator.py` | Phrasing coverage validator (runs `resolve()` on `.txt` test files) + amplification safety + file-existence checks |
-| `cli.py` | Subcommands: `resolve`, `validate`, `detect`. Core functions return plain dicts; CLI formats and sets exit codes. |
-| `schema.py` | Validates `context.yaml` structure before any resolution |
-| `discovery.py` | Phase 4a — stack detection (Ruby/Node/Python), per-field confidence + source, never blended into one score |
+| `cli.py` | Subcommands: `resolve`, `validate`, `detect`, `discover-docs`. Core functions return plain dicts; CLI formats and sets exit codes. |
+| `schema.py` | Validates `context.yaml` structure before any resolution — requires `source:` on every `rules[]`/pattern entry, `architecture.flow` optional |
+| `discovery.py` | Phase 4a — stack detection (Ruby/Node/Python/Go/Rust/Java), per-field confidence + source, never blended into one score |
+| `docs_discovery.py` | Việc 1 — deterministic doc listing (`README.md`/`CLAUDE.md`/`AGENTS.md` at any depth, `docs/**/*.md`), no LLM, no scoring |
 
 ### Resolution Algorithm
 
@@ -134,20 +137,24 @@ Action inference maps the first verb → `create/update/destroy/index/show` via 
 ### context.yaml Four-Layer Model
 
 - **L1 STACK** — language, framework, API versioning, default actor
-- **L2 ARCHITECTURE** — component chain (`architecture.flow`) + per-component responsibilities, actors
-- **L3 DOMAINS** — `keywords`, `coverage_level`, `related_components`, `subtypes`, `patterns`, `extra_components`
-- **L4 INVARIANTS** — rules with `severity` + `guidance`; `domain:` field to scope a rule to specific domains
+- **L2 ARCHITECTURE** — *optional*: component chain (`architecture.flow`) + per-component responsibilities, actors. A repo with no clear layered architecture omits this section entirely; `resolver.py` degrades to an empty component chain rather than erroring
+- **L3 DOMAINS** — `keywords`, `coverage_level`, `related_components`, `subtypes`, `patterns`, `extra_components`. Every pattern entry (domain- or subtype-level) requires `source:` — the file it was derived from
+- **L4 INVARIANTS** — rules with `severity` + `guidance`; `domain:` field to scope a rule to specific domains. Every rule requires `source:`, same as L3 patterns
+
+`source:` is a doc path (from `discover-docs`'s `docs_found`) when the docs-first path found the content, or a code file path when the no-docs fallback (direct code reading) produced it — traceability for what a generated rule/pattern was actually based on, not an unattributed LLM summary.
 
 Coverage levels: `routing_only` / `file_indexed` / `pattern_indexed`.
 Amplification risk: flagged when one token matches ≥4 keywords in the same domain.
 
-Canonical reference: `examples/rails-hmvc-sample/context.yaml`.
+Canonical references: `examples/rails-hmvc-sample/context.yaml` (layered architecture), `examples/data-pipeline-sample/context.yaml` (no `architecture.flow`).
 
 ## Phase 4 — Automated Discovery
 
-**4a — Stack detection (`discovery.py`)**: Ruby (Gemfile), Node (package.json), Python (pyproject.toml/requirements.txt) only — scope is bounded to what has real ground truth to verify against (`qlear-v2-admin`/`qlear-v2-bot`, `rush86999/atom`), not the full list in the original spec (Go/Java/etc. have no verified detector yet). Non-recursive — reads only the given `--repo` path, one ecosystem-manifest scan per call; a monorepo with multiple ecosystems (e.g. a Python `backend/` next to a Next.js `frontend-nextjs/`) needs one `detect` call per subdirectory. Every field carries its own `{value, confidence, source}` — deliberately not blended into one score, since a field from a structured manifest (near-certain) and one recovered from CLAUDE.md/README prose (much less certain) are not comparable. Never writes `context.yaml` directly; that only happens after the wizard's explicit approval in Phase 3.
+**4a — Stack detection (`discovery.py`)**: Ruby (Gemfile), Node (package.json), Python (pyproject.toml/requirements.txt), Go (go.mod), Rust (Cargo.toml), Java (pom.xml/build.gradle[.kts]) — scope is bounded to what has real ground truth to verify against, not an open-ended list of every ecosystem. Non-recursive — reads only the given `--repo` path, one ecosystem-manifest scan per call; a monorepo with multiple ecosystems (e.g. a Python `backend/` next to a Next.js `frontend-nextjs/`) needs one `detect` call per subdirectory. Every field carries its own `{value, confidence, source}` — deliberately not blended into one score, since a field from a structured manifest (near-certain) and one recovered from CLAUDE.md/README prose (much less certain) are not comparable. Never writes `context.yaml` directly.
 
-`/oc-setup` Phase 0 runs 4a and folds the result into Question 3 as one batch-confirm line, since near-certain fields don't warrant per-field friction. Question 4 (architecture pattern) is asked blind — the Rails-only architecture-discovery detector that used to pre-fill it (formerly "4b") was removed as part of the pivot away from Rails-specific tooling; a docs-first replacement is tracked separately (see `tasks/plan.md`). `oc-init` and `oc-setup` both got an overwrite guard (ask `[y/N]` before clobbering an existing settings file or `context.yaml`) as part of earlier work — an unrelated silent-data-loss bug found while auditing the write paths, not a Phase 4 feature.
+**Việc 1 — Project doc discovery (`docs_discovery.py`)**: a deterministic, LLM-free file listing — `README.md`/`CLAUDE.md`/`AGENTS.md` at any directory depth, plus every `.md` file under any `docs/` directory. Skips `node_modules`/`vendor`/`.git`/`dist`/`build`/`.open-context` by never descending into them. This is deliberately split from the LLM step that reads the files it finds (same 4a-code vs 4b-LLM split that shaped the original discovery design) — finding candidate files is pure code; deciding what they mean is the agentic wizard's job.
+
+`/oc-setup` Phase 0 runs both, then Question 3 (the project-profile confirm — see that skill's file for the full flow) reads what `discover-docs` found and synthesizes stack/architecture/actors from it, citing `source:` per field. When no docs exist, it falls back to reading source code directly — this is what replaced the old Rails-only "4b" architecture-discovery detector, which was removed entirely rather than kept as a special case (see `tasks/plan.md` for the full rationale). `oc-init` and `oc-setup` both got an overwrite guard (ask `[y/N]` before clobbering an existing settings file or `context.yaml`) as part of earlier work — an unrelated silent-data-loss bug found while auditing the write paths, not a Phase 4 feature.
 
 ## Local-only config (`.open-context/`)
 

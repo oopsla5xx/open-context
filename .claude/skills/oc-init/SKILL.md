@@ -15,17 +15,18 @@ If found, use `language`, `framework`, `architecture`, and `actors` from setting
 
 ## Step 2 — Discover project knowledge
 
-Scan in priority order, stopping as soon as you have enough signal:
+Docs-first, same logic as `/oc-setup` (see that skill for the full rationale) — reused here, not reinvented, since both skills generate the same context.yaml shape from the same kind of evidence:
 
-1. `CLAUDE.md` / `AGENTS.md` — architecture conventions, component responsibilities, coding rules
-2. `docs/` — ADRs, architecture diagrams, markdown
-3. `README.md` / `README.*.md`
-4. OpenAPI / Swagger specs (`openapi.yaml`, `swagger.yaml`, `api/docs/`)
-5. Source code (only if docs give insufficient signal):
-   - `app/controllers/` (or equivalent) — group by namespace → domain candidates
-   - `app/operations/` / `app/services/` / `app/use_cases/` — confirm domain boundaries
-   - `app/models/` — primary models per domain
-   - Routes file — confirm resource grouping
+1. **List candidate docs (deterministic, no LLM).** Run:
+   ```
+   PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/src:${CLAUDE_PLUGIN_ROOT}/vendor" \
+     python3 -m open_context.cli discover-docs --repo . --json
+   ```
+   This lists `README.md`/`CLAUDE.md`/`AGENTS.md` at any depth plus `docs/**/*.md` — a plain file listing, not a judgment call.
+2. **Read what it found.** If `docs_found` is non-empty, Read every file it lists. Also check for OpenAPI/Swagger specs (`openapi.yaml`, `swagger.yaml`, `api/docs/`) — `discover-docs` doesn't list non-`.md` files, so look for these directly. Use this content for L1/L2 (when settings from Step 1 don't already cover it) and for L3/L4 domain and rule content.
+3. **No docs found, or insufficient signal for a specific field** — fall back to reading source code directly the way a new engineer would: group request-entry files (controllers/handlers/routes, whatever the codebase's actual layout uses) by namespace into domain candidates, then confirm against the models/services beneath each. This replaces the old Rails-only "4b" detector for architecture inference — deliberate LLM judgment, not a fixed algorithm, so it works for any language/framework.
+
+**Every rule and pattern written in Step 3 must carry `source:`** citing the file it came from — a doc path, an OpenAPI spec path, or a code file path for the fallback case. Not optional: `schema.py` rejects a `rules[]` or `patterns[]` entry with no `source:`.
 
 ## Step 3 — Generate context.yaml
 
@@ -50,7 +51,8 @@ project:
   api_versioning: <string>
   default_actor: <string>
 
-# ── L2 ARCHITECTURE ───────────────────────────────────────────────────────────
+# ── L2 ARCHITECTURE (omit this whole section if no clear layered architecture
+#    was found — schema.py treats it as optional) ──────────────────────────────
 architecture:
   name: <string>
   flow: [<component>, ...]
@@ -89,9 +91,11 @@ domains:
         patterns:
           - id: <slug>
             description: <string>
+            source: <doc-or-code-file-this-was-read-from>   # required — see Step 2
     patterns:
       - id: <slug>
         description: <string>
+        source: <doc-or-code-file-this-was-read-from>       # required — see Step 2
 
 # ── L4 INVARIANTS ─────────────────────────────────────────────────────────────
 rules:
@@ -100,6 +104,7 @@ rules:
     applies_to: [<component_name>, ...]
     domain: [<domain_name>]
     severity: critical | warning | info
+    source: <doc-or-code-file-this-was-read-from>           # required — see Step 2
     guidance: |
       <concrete fix or code example>
 ```

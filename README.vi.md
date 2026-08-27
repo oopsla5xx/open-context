@@ -106,11 +106,11 @@ Chạy lệnh này từ terminal, không phải slash command trong Claude Code 
 /oc-setup
 ```
 
-Hỏi tối đa 6 câu (scope, ngôn ngữ giao tiếp, ngôn ngữ lập trình, framework, architecture pattern, actor roles), sinh `context.yaml` và test phrasing file dưới `.open-context/`, validate trong một agentic loop. Chạy lại bất cứ lúc nào để cấu hình lại.
+Hỏi 3 câu — scope, ngôn ngữ giao tiếp, và một bước confirm project profile duy nhất — rồi sinh `context.yaml` và test phrasing file dưới `.open-context/`, validate trong một agentic loop. Chạy lại bất cứ lúc nào để cấu hình lại.
 
 `.open-context/` **local trên máy bạn và bị gitignore** (wizard tự thêm dòng này) — routing config là của riêng từng developer, không chia sẻ qua git cho cả team. Đồng nghiệp nào muốn dùng routing thì tự chạy `/oc-setup`.
 
-Automated discovery giúp pre-fill câu trả lời cho wizard, nhưng scope hiện tại còn hẹp: stack auto-detect chỉ đọc manifest của Ruby (`Gemfile`), Node.js (`package.json`), và Python (`pyproject.toml`/`requirements.txt`); architecture-chain auto-discovery chỉ hỗ trợ Rails. Ngôn ngữ/framework khác vẫn dùng được — bạn chỉ cần tự trả lời các câu hỏi đó thay vì được gợi ý sẵn. Phần routing (hook, `context.yaml`) hoàn toàn language-agnostic khi đã setup xong. Chi tiết ở [`docs/reference.md`](docs/reference.md#automated-discovery) *(tiếng Anh)*.
+Câu hỏi project profile ưu tiên đọc docs trước: nó đọc `README.md`/`CLAUDE.md`/`AGENTS.md`/`docs/**/*.md` sẵn có trong repo (tìm bằng scan xác định `open-context discover-docs`) để tổng hợp language/framework/architecture/actors, ghi rõ mỗi field lấy từ file nào. Không có docs? Nó fallback sang đọc trực tiếp source code, giống cách một kỹ sư mới đọc code lần đầu — hoạt động với mọi ngôn ngữ/framework, không chỉ những cái có detector sẵn. Stack auto-detect (`open-context detect`) hỗ trợ thêm manifest Ruby/Node/Python/Go/Rust/Java như một lớp cross-check gần như chắc chắn. Chi tiết ở [`docs/reference.md`](docs/reference.md#automated-discovery) *(tiếng Anh)*.
 
 ---
 
@@ -120,7 +120,7 @@ Automated discovery giúp pre-fill câu trả lời cho wizard, nhưng scope hi�
 
 ```mermaid
 flowchart LR
-    A[Cài plugin] --> B["/oc-setup\ntối đa 7 câu hỏi"]
+    A[Cài plugin] --> B["/oc-setup\n3 câu hỏi"]
     B --> C[Sinh\ncontext.yaml + tests]
     C --> D[Validate loop\ntối đa 3 vòng]
     D --> E["✓ Sẵn sàng"]

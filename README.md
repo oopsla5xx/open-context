@@ -106,11 +106,11 @@ Run this from your terminal, not as a slash command inside Claude Code — `/plu
 /oc-setup
 ```
 
-Asks up to 6 questions (scope, communication language, programming language, framework, architecture pattern, actor roles), generates `context.yaml` and test phrasing files under `.open-context/`, validates everything in one agentic loop. Re-run any time to reconfigure.
+Asks 3 questions — scope, communication language, and one project-profile confirm — then generates `context.yaml` and test phrasing files under `.open-context/`, validates everything in one agentic loop. Re-run any time to reconfigure.
 
 `.open-context/` is **local to your machine and gitignored** (the wizard adds the entry itself) — routing config is per-developer, not shared with the team via git. Each teammate who wants routing runs `/oc-setup` themselves.
 
-Automated discovery pre-fills the wizard's answers, but its scope is deliberately narrow: stack auto-detect reads Ruby (`Gemfile`), Node.js (`package.json`), and Python (`pyproject.toml`/`requirements.txt`) manifests; architecture-chain auto-discovery is Rails-only. Any other language or framework still works — you just answer those questions by hand instead of getting a pre-filled suggestion. Routing itself (the hook, `context.yaml`) is fully language-agnostic once set up. Details in [`docs/reference.md`](docs/reference.md#automated-discovery).
+The project-profile question is docs-first: it reads your repo's own `README.md`/`CLAUDE.md`/`AGENTS.md`/`docs/**/*.md` (found by a deterministic scan, `open-context discover-docs`) to synthesize language/framework/architecture/actors, citing which file each field came from. No docs? It falls back to reading your source code directly, the way a new engineer would — works for any language or framework, not just the ones with a structured-manifest detector. Stack auto-detect (`open-context detect`) additionally covers Ruby/Node/Python/Go/Rust/Java manifests as a near-certain cross-check. Details in [`docs/reference.md`](docs/reference.md#automated-discovery).
 
 ---
 
@@ -120,7 +120,7 @@ Automated discovery pre-fills the wizard's answers, but its scope is deliberatel
 
 ```mermaid
 flowchart LR
-    A[Install plugin] --> B["/oc-setup\nup to 7 questions"]
+    A[Install plugin] --> B["/oc-setup\n3 questions"]
     B --> C[Generate\ncontext.yaml + tests]
     C --> D[Validate loop\nmax 3 rounds]
     D --> E["✓ Ready"]

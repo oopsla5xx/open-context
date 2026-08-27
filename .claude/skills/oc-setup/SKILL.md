@@ -1,6 +1,6 @@
 ---
 name: oc-setup
-description: First-run setup wizard for open-context — asks up to 6 questions about scope, communication language, programming language, framework, architecture, and actors — then generates context.yaml and test phrasing files under .open-context/ (gitignored, local to your machine) and validates in an agentic loop.
+description: First-run setup wizard for open-context — asks 2 questions (scope, communication language), then reads the project's own docs (or source code, if none exist) to synthesize a project profile (stack, architecture, actors) for a single confirm — then generates context.yaml and test phrasing files under .open-context/ (gitignored, local to your machine) and validates in an agentic loop.
 ---
 
 You are running the open-context first-run setup wizard. Execute all phases in order without waiting for the user to prompt you between phases. Be concise — summarise what you did after each phase in one line.
@@ -9,22 +9,29 @@ You are running the open-context first-run setup wizard. Execute all phases in o
 
 ## Phase 0 — Discovery (silent, runs before any question)
 
-Before asking anything, run automated detection so Question 3 can be pre-filled with real evidence instead of asked blind. Print nothing yet — results are folded into the relevant question below. If this step fails or finds nothing, fall back silently to asking that question blind (no error, no partial pre-fill).
+Before asking anything, run automated detection so Question 3 can be pre-filled with real evidence instead of asked blind. Print nothing yet — results are folded into Question 3 below. If a step fails or finds nothing, fall back silently to the next step (no error, no partial pre-fill).
 
 1. **Stack detection (4a).** Run:
    ```
    PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/src:${CLAUDE_PLUGIN_ROOT}/vendor" \
      python3 -m open_context.cli detect --repo . --json
    ```
-   Keep the result for Question 3. If no ecosystem was detected (empty `ecosystems`), Question 3 is asked blind as written below.
+   Keep the result for Question 3 as the near-certain source for language/framework/version/package-manager/database/orm/test-framework — these fields come from a structured manifest (Gemfile/package.json/pyproject.toml/go.mod/Cargo.toml/pom.xml/build.gradle), which outranks a docs-derived guess for the same field. If no ecosystem was detected (empty `ecosystems`), Question 3 falls through to docs/code for these fields too, same as everything else.
 
-   **If more than one ecosystem was detected** (e.g. a Rails app that also has a `package.json` for its JS asset pipeline, with no `framework` field found under Node — confirmed on qlear-v2-admin): prefer the ecosystem that has a detected `framework` value over one that doesn't — a repo's asset toolchain having a `package.json` doesn't make it "a Node project." If more than one ecosystem has a `framework` value, or none do, do not silently pick one — ask the user directly which ecosystem this question is about, listing what was found in each, before falling back to the blind flow below for that ecosystem.
+   **If more than one ecosystem was detected** (e.g. a Rails app that also has a `package.json` for its JS asset pipeline, with no `framework` field found under Node — confirmed on qlear-v2-admin): prefer the ecosystem that has a detected `framework` value over one that doesn't — a repo's asset toolchain having a `package.json` doesn't make it "a Node project." If more than one ecosystem has a `framework` value, or none do, do not silently pick one — ask the user directly which ecosystem this question is about, listing what was found in each.
 
-> Architecture discovery (formerly Phase 0 step 2 / "4b") has been removed — it was Rails-only and never generalized. Question 4 below is always asked blind for now; a docs-first replacement is planned separately.
+2. **Project doc discovery (Việc 1).** Run:
+   ```
+   PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/src:${CLAUDE_PLUGIN_ROOT}/vendor" \
+     python3 -m open_context.cli discover-docs --repo . --json
+   ```
+   This is a deterministic file listing only (README.md/CLAUDE.md/AGENTS.md at any depth, plus `docs/**/*.md`) — it does not read content or decide anything. Keep the `docs_found` list for Question 3, which does the actual reading.
+
+Architecture discovery (formerly Phase 0 step "4b", Rails-only) has been removed — it never generalized past Rails. What replaces it is Question 3 below: read the docs this step found (or the source code directly, if none were found) the way an engineer new to the codebase would, rather than a fixed detector.
 
 ---
 
-## Phase 1 — Wizard (up to 6 questions)
+## Phase 1 — Wizard (3 questions)
 
 Ask each question one at a time. Present options as a numbered list. Wait for the user's answer before asking the next question.
 
@@ -43,58 +50,32 @@ open-context is local-only per developer: everything it generates (`.open-contex
 
 From this point on, use the chosen language for all responses in this session.
 
-**Question 3 — Primary language & framework**
+**Question 3 — Project profile (language, framework, architecture, actors)**
 
-If Phase 0 step 1 detected an ecosystem, pre-fill with a single **batch-confirm** line — not the heavier 4-choice format used for Question 4. Stack fields (language/framework/version/db/orm/test framework) are near-certain when read from a structured manifest (Gemfile/package.json/pyproject.toml) — asking the user to click through a Yes/Review/Select-another/Custom gate for each of 5-6 fields that are almost always right trains a click-through reflex that then carries into Question 4, the one question that actually needs a real pause. Match friction to actual risk:
+**This question never auto-writes anything — `context.yaml` is only ever written in Phase 3, after this question resolves to an explicit Yes/Edit answer.**
 
-> Detected: `<language> <language_version>` · `<framework> <framework_version>` · `<package_manager>` · `<database>`[ + `<database_secondary>`] · `<orm>`[ + `<orm_secondary>`] · `<test_framework>`
-> (source: Gemfile / package.json / pyproject.toml — see `--json` output for per-field confidence; omit any field absent from the detect result, don't print an empty placeholder for it)
-> Press Enter to use this, or type corrections (e.g. "framework: Sinatra, test_framework: Minitest").
+One synthesized draft, not four separate questions — the whole point of this rewrite is that a repo's own docs (or, failing that, its own code) already say what its stack/architecture/actors are; the job here is to read and cite that, not to make the user re-type it through a multiple-choice menu. Determine each field in this priority order, tracking which source each field actually came from — do not blend a docs claim and a code-reading guess into one unattributed line:
 
-If the user just presses Enter (or says "yes"/"ok"/equivalent): use the detected values directly, do not ask the numbered lists below.
-If the user types a correction: apply only the corrected field(s), keep the rest of the detected values.
-If Phase 0 found nothing (no ecosystem detected) or detection is being overridden entirely, ask blind as before:
+1. **Stack fields (language/framework/version/db/orm/test framework)** — use Phase 0 step 1's `detect()` result when it found something; that's a structured-manifest read, near-certain, and outranks anything read from prose. Cite the manifest file (e.g. `Gemfile`, `go.mod`) as the source.
+2. **Everything else (architecture/component chain, primary actor roles), and any stack field `detect()` didn't find** — if Phase 0 step 2's `docs_found` is non-empty, Read every file it listed. Synthesize architecture as a real component chain if the docs actually describe one (e.g. "controllers call operations, operations call models") — never force a fixed archetype name onto a repo that doesn't have one; if the docs (or the repo's actual shape) don't support a clean layered chain, say so plainly rather than guessing a plausible-sounding one. Cite the specific doc path read for each field.
+3. **No docs found at all, or docs left a field unresolved** — read the source code directly the way a new engineer would: list the top-level directory structure, open a handful of representative files (entry points, routing/handler files, whatever the directory layout suggests is load-bearing), and infer from there. This replaces the old Rails-only "4b" detector — it is deliberately LLM judgment now, not a fixed algorithm, so it works for any language/framework. Cite the actual code file(s) read as the source, not a doc path.
+4. **Still nothing usable** (e.g. a near-empty new repo with no docs and barely any code) — ask directly, as a last resort, not a default:
+   > What language/framework does this project use, and what's the rough shape of its architecture (e.g. controller → service → model, or "no clear layers")? Who are the primary actors (e.g. admin, user, guest)?
 
-> What language does this project use?
-> 1. Ruby
-> 2. Python
-> 3. TypeScript
-> 4. JavaScript
-> 5. Go
-> 6. Java / Kotlin
-> 7. Other (specify)
+Present the synthesized draft as one block, every field tagged with its source:
 
-Then, based on the language chosen:
-- Ruby → 1. Rails  2. Sinatra  3. Hanami  4. Other
-- Python → 1. Django  2. FastAPI  3. Flask  4. Other
-- TypeScript → 1. Next.js  2. NestJS  3. Express  4. Other
-- JavaScript → 1. Next.js  2. Express  3. Nuxt  4. Other
-- Go → 1. Gin  2. Echo  3. Fiber  4. Other
-- Java/Kotlin → 1. Spring Boot  2. Ktor  3. Other
-- Other language → ask free text
+> Detected project profile:
+> Language/Framework: `<language> <version>` · `<framework> <version>` (source: `<manifest file>`)
+> Architecture: `<component chain>` OR `no clear layered architecture — will be omitted from context.yaml` (source: `<doc or code file>`)
+> Actors: `<comma-separated list>` (source: `<doc or code file>`)
+> [any field determined via step 4's blind fallback above: mark it "(no signal found — asked directly)" instead of a file source]
+>
+> 1. Yes — use this as-is
+> 2. Edit — describe what's wrong, only that gets corrected
+> 3. Regenerate — re-read with different guidance (e.g. "check `docs/architecture/` instead")
 
-**Question 4 — Architecture pattern**
-
-**This question never auto-writes anything — `context.yaml` is only ever written in Phase 3, after this question resolves to an explicit answer.**
-
-Always asked blind (see the note in Phase 0 — automated architecture discovery was removed):
-
-> What architectural pattern does this project follow?
-> 1. HMVC — controller → operation → form → model → serializer
-> 2. Service Objects — controller → service → model
-> 3. Clean / Hexagonal — use case → repository → entity
-> 4. Standard MVC — controller → model → view
-> 5. Other (describe the component chain briefly)
-
-**Question 5 — Primary actor roles**
-> Who are the primary actors in this system? Select all that apply (comma-separated numbers), or type custom roles:
-> 1. admin
-> 2. user
-> 3. guest
-> 4. tenant
-> 5. staff
-> 6. customer
-> 7. Other (specify)
+If **Edit**: apply only the corrected field(s), keep the rest of the draft.
+If **Regenerate**: re-run the relevant discovery step with the user's guidance, then re-present the draft.
 
 ---
 
@@ -111,12 +92,12 @@ Write the settings file based on scope chosen in Question 1.
 ```yaml
 scope: project
 communication_language: <answer-2>
-language: <answer-3>
-framework: <answer-4>
+language: <from-confirmed-project-profile>
+framework: <from-confirmed-project-profile>
 architecture:
-  name: <answer-5-name>
-  flow: [<component-chain-from-answer-5>]
-actors: [<answer-6-list>]
+  name: <from-confirmed-project-profile, or omit entirely if no clear layered architecture>
+  flow: [<component-chain, or omit if no clear layered architecture>]
+actors: [<from-confirmed-project-profile>]
 ```
 
 **If scope = `global`**, create `$CLAUDE_PLUGIN_DATA/open-context/settings.json`:
@@ -124,13 +105,13 @@ actors: [<answer-6-list>]
 {
   "scope": "global",
   "communication_language": "<answer-2>",
-  "language": "<answer-3>",
-  "framework": "<answer-4>",
+  "language": "<from-confirmed-project-profile>",
+  "framework": "<from-confirmed-project-profile>",
   "architecture": {
-    "name": "<answer-5-name>",
+    "name": "<from-confirmed-project-profile, or omit entirely if no clear layered architecture>",
     "flow": ["<component>", "..."]
   },
-  "actors": ["<actor>", "..."]
+  "actors": ["<from-confirmed-project-profile>"]
 }
 ```
 
@@ -147,21 +128,15 @@ Create parent directories if they don't exist.
 
 Default (empty answer or `N`) → stop the whole wizard here, do not write anything, leave the existing file untouched. Only proceed if the user answers `y`.
 
-Scan the project and generate `.open-context/context.yaml` using the wizard answers as L1 and L2 anchors.
+Use the confirmed Question 3 project profile as the L1/L2 anchors — do not re-derive language/framework/architecture/actors independently here; that was already resolved (and its sources already cited) in Question 3.
 
-**If Question 4 was answered "Yes" from a Phase 0 architecture proposal:** use its `allowed_dependencies` output directly for the corresponding components' `allowed_dependencies` field below — this is real call-evidence (component A's files actually reference component B), not a guess, so do not ask this Phase 3 step to re-derive it independently; a second, independently-guessed source for the same fact risks silently disagreeing with the first. `forbidden_dependencies` is unaffected — that is still this step's own judgment call in every case, detected or not.
+### Discovery for L3 domains and L4 rules
 
-### Discovery (scan in priority order)
+The L2 profile answers "what shape is this codebase" — this step answers "what are its business domains and invariants," a separate question Question 3 doesn't cover. Reuse Phase 0 step 2's `docs_found` list — Read every file in it (skip ones already read for Question 3 only if nothing new would be learned; most docs mix architecture and domain/rule content, so re-reading is usually still worth it). Also check for OpenAPI/Swagger specs (`openapi.yaml`, `swagger.yaml`, `api/docs/`) — `discover-docs` doesn't list these (non-`.md`), so look for them directly.
 
-1. `CLAUDE.md` / `AGENTS.md` — architecture conventions, rules, coding invariants
-2. `docs/` — ADRs, architecture docs, markdown files
-3. `README.md` / `README.*.md`
-4. OpenAPI / Swagger specs (`openapi.yaml`, `swagger.yaml`, `api/docs/`)
-5. Source code if docs give insufficient signal:
-   - `app/controllers/` (or equivalent) — group by namespace → domain candidates
-   - `app/operations/` / `app/services/` / `app/use_cases/` — confirm domain boundaries
-   - `app/models/` — primary models per domain
-   - Routes file — confirm resource grouping
+If `docs_found` was empty, or the docs read gave insufficient signal for domain boundaries specifically: fall back to reading source code the way Question 3's fallback did — group request-entry files (controllers/handlers/routes, whatever the codebase's actual layout uses) by namespace into domain candidates, then confirm against the models/services beneath each.
+
+**Every rule and pattern written below must carry `source:`** citing the file it came from — a doc path from `docs_found`, an OpenAPI spec path, or a code file path for the fallback case. This is not optional: `schema.py` rejects a `rules[]` or `patterns[]` entry with no `source:`.
 
 ### Output: `.open-context/context.yaml`
 
@@ -171,18 +146,19 @@ Write the file following this exact four-layer schema:
 # ── L1 STACK ──────────────────────────────────────────────────────────────────
 project:
   name: <string>
-  language: <from-settings>
+  language: <from-confirmed-project-profile>
   language_version: "<detected-or-omit>"
-  framework: <from-settings>
+  framework: <from-confirmed-project-profile>
   framework_version: "<detected-or-omit>"
   api_mode: <bool>
   api_versioning: <string>        # versionist / path / header / none
-  default_actor: <first-actor-from-settings>
+  default_actor: <first-actor-from-confirmed-project-profile>
 
-# ── L2 ARCHITECTURE ───────────────────────────────────────────────────────────
+# ── L2 ARCHITECTURE (omit this whole section if the confirmed profile found no
+#    clear layered architecture — schema.py treats it as optional) ────────────
 architecture:
-  name: <from-settings>
-  flow: [<component-chain-from-settings>]
+  name: <from-confirmed-project-profile>
+  flow: [<component-chain-from-confirmed-project-profile>]
 
 components:
   <component_name>:               # one block per component in architecture.flow
@@ -197,7 +173,7 @@ components:
         description: <string>
 
 actors:
-  <actor_name>:                   # one block per actor from settings
+  <actor_name>:                   # one block per actor from confirmed profile
     description: <string>
     auth_method: <detected-or-omit>
     context_keys: [<detected-or-omit>]
@@ -218,9 +194,11 @@ domains:
         patterns:
           - id: <slug>
             description: <string>
+            source: <doc-or-code-file-this-was-read-from>   # required — see note above
     patterns:                     # for pattern_indexed only
       - id: <slug>
         description: <string>
+        source: <doc-or-code-file-this-was-read-from>       # required — see note above
 
 # ── L4 INVARIANTS ─────────────────────────────────────────────────────────────
 rules:
@@ -229,6 +207,7 @@ rules:
     applies_to: [<component_name>, ...]
     domain: [<domain_name>]       # omit if universal
     severity: critical | warning | info
+    source: <doc-or-code-file-this-was-read-from>           # required — see note above
     guidance: |
       <concrete code example or fix>
 ```
@@ -325,6 +304,6 @@ Next: run /oc-validate any time context.yaml changes.
 Everything above lives under .open-context/ and is gitignored — local to this
 machine, not shared with the team via git. If you want CI to validate
 context.yaml on every PR, you'll need to commit .open-context/ yourself and
-wire up `open-context validate --strict` / `open-context architecture
-validate` in your own workflow — see the CLI usage in README.md.
+wire up `open-context validate --strict` in your own workflow — see the CLI
+usage in README.md.
 ```

@@ -8,7 +8,7 @@ Deeper technical detail that doesn't need to be read before installing. See the 
 
 `/oc-setup` doesn't start blind. Before asking anything, it runs a deterministic stack detector and pre-fills the relevant questions — you still confirm every answer; nothing is written to `context.yaml` without an explicit yes.
 
-**Stack detection** — Ruby (`Gemfile`), Node (`package.json`), Python (`pyproject.toml`/`requirements.txt`) only, this round. Reads structured config first; falls back to `CLAUDE.md`/`README.md` prose only for fields a manifest can't answer (e.g. a database's server version), at visibly lower confidence. Near-certain fields are shown as one batch-confirm line — press Enter to accept, or correct just the field that's wrong:
+**Stack detection** — Ruby (`Gemfile`), Node (`package.json`), Python (`pyproject.toml`/`requirements.txt`), Go (`go.mod`), Rust (`Cargo.toml`), Java (`pom.xml`/`build.gradle[.kts]`). Reads structured config first; falls back to `CLAUDE.md`/`README.md` prose only for fields a manifest can't answer (e.g. a database's server version), at visibly lower confidence. Near-certain fields are shown as one batch-confirm line — press Enter to accept, or correct just the field that's wrong:
 
 ```
 Detected: Ruby 3.2.1 · Rails 7.0.4.2 · Bundler · PostgreSQL · ActiveRecord · RSpec
@@ -21,18 +21,26 @@ Runs standalone too:
 open-context detect --repo .
 ```
 
+**Project doc discovery** — a separate, deterministic file listing (no LLM): every `README.md`/`CLAUDE.md`/`AGENTS.md` at any depth, plus every `.md` file under any `docs/` directory. `/oc-setup`'s project-profile question reads whatever this finds to synthesize architecture and actors — with no docs, it falls back to reading source code directly, the way a new engineer would, rather than a fixed per-framework detector (there is no Rails-only "4b" equivalent for architecture anymore). Runs standalone too:
+
+```bash
+open-context discover-docs --repo .
+```
+
 ---
 
 ## context.yaml
 
-Four layers, one file per project:
+Four layers, one file per project — L2 is optional (a repo with no clear layered architecture omits it, routes purely on L3/L4):
 
 ```
 L1  STACK        — language, framework, API mode
-L2  ARCHITECTURE — component chain and per-component responsibilities
+L2  ARCHITECTURE — (optional) component chain and per-component responsibilities
 L3  DOMAINS      — keywords, related files, subtypes, patterns per domain
 L4  INVARIANTS   — always-applicable architecture rules with severity and guidance
 ```
+
+Every L3 pattern and L4 rule requires a `source:` field citing the doc or code file it was derived from — `schema.py` rejects one without it.
 
 Each domain declares a coverage level:
 
@@ -42,7 +50,7 @@ Each domain declares a coverage level:
 | `file_indexed` | Non-obvious paths, shared infra, concurrency |
 | `pattern_indexed` | Subtle invariants needing explicit guidance |
 
-Working example with all coverage levels: [`examples/rails-hmvc-sample/`](../examples/rails-hmvc-sample/).
+Working example with all coverage levels: [`examples/rails-hmvc-sample/`](../examples/rails-hmvc-sample/). No-layer example (no `architecture.flow`): [`examples/data-pipeline-sample/`](../examples/data-pipeline-sample/).
 
 > [!IMPORTANT]
 > A stale `context.yaml` produces no error — it routes silently to the wrong files. Version it alongside the code it describes. Treat `/oc-validate` failures as CI failures.
@@ -69,4 +77,4 @@ All benchmark numbers referenced in [`open-context-v0-architecture.md`](open-con
 
 **Auto-generated `context.yaml` quality.** `/oc-setup` and `/oc-init` generate `context.yaml` via an LLM-driven wizard, validated automatically for routing correctness only. Whether generated patterns/constraints match the accuracy of hand-written equivalents — the property measured in `open-context-v0-architecture.md` — has not been tested.
 
-**Discovery detector scope.** Stack detection covers Ruby/Node/Python only (verified against 4 real repos); other languages listed in early design notes (Go, Java, Rust) have no detector yet. Deliberately scoped to what has real ground truth to verify against, not the full original wishlist.
+**Discovery detector scope.** Stack detection covers Ruby, Node, Python (verified against 4 real repos), plus Go/Rust/Java (added later, not yet verified against a real repo the way the original three were). Other ecosystems still have no detector.
