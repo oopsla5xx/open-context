@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] — 2026-08-27
+
+Fixes CI failures discovered right after tagging v0.3.0 — that tag's commit is left as-is (already pushed publicly); this patch carries the fixes forward instead of moving the tag.
+
+### Fixed
+
+- `.github/workflows/validate-example.yml` still called the deleted `open-context architecture validate` CLI subcommand (removed in v0.3.0's Rails-tooling cleanup, missed in that PR's docs sweep). Removed the step; the workflow now validates all three `examples/` projects (`rails-hmvc-sample`, `nextjs-sample`, `data-pipeline-sample`) instead of just one.
+- `discovery.py`'s `detect_rust` `tomllib` fallback was never exercised on Python <3.11 (`tomllib` is stdlib only from 3.11; CI's matrix includes 3.9/3.10, local dev used 3.13) — the old fallback recovered dependency *presence* only, never `package.rust-version`, and its whole-file regex scan would have leaked `[package]` keys (name, edition, ...) into the dependency list. Replaced with a real section-scoped regex parser producing the same shape `tomllib` would.
+- `discovery.py`, `docs_discovery.py`: pylint line-too-long (4 lines) and an unused variable (`is_kotlin_dsl`) caught by CI's lint job, not run locally before the v0.3.0 tag push.
+- `validator.py`: trailing blank line left over from v0.3.0's file truncation during the HMVC-validator removal.
+
 ## [0.3.0] — 2026-08-27
 
 Pivots from "Rails/HMVC-aware" to "any repo, any architecture" — a project's own docs (or its own code, with no docs) now drive setup instead of a fixed per-framework detector.
