@@ -161,6 +161,22 @@ verbs"), or the resolver's threshold floor should be revisited for
 `routing_only` domains specifically, where a single strong keyword arguably
 should be enough.
 
+**Update:** Partially fixed. `resolver.py` now adds `domain_unique_keywords()`
+— when nothing clears the standard 2-hit floor at all, a domain whose lone
+matched keyword no other domain shares (e.g. `integration` here) routes on
+its own, since that's structurally unambiguous evidence, not the kind of
+noise the floor exists to filter. Verified against this exact case
+(`"disconnect an integration"` now routes), and re-running this sample's
+phrasing tests would very likely close some or all of the `finance` gap
+described below too, since those 4 residual failures are exactly this
+failure mode. Deliberately scoped narrowly, though: the bypass only fires
+when nothing else would route anyway — a domain-unique word riding along
+in a sentence that already has a dominant match elsewhere (e.g. a task
+mentioning `webhook` and, in passing, `hubspot`) does not also get
+injected, since that's a genuinely different judgment call this fix does
+not attempt to make. See `tests/test_resolver.py` and
+`docs/reference.md`'s "Keyword ceiling" note.
+
 ### Finding B — the fix loop the product already ships works, and works well
 
 One iteration of `/oc-setup`'s own documented "patch keywords" step took
