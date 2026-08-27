@@ -18,7 +18,6 @@
   <img alt="Auto-detect: Ruby" src="https://img.shields.io/badge/auto--detect-Ruby-CC342D?style=flat-square&logo=ruby&logoColor=white">
   <img alt="Auto-detect: Node.js" src="https://img.shields.io/badge/auto--detect-Node.js-339933?style=flat-square&logo=node.js&logoColor=white">
   <img alt="Auto-detect: Python" src="https://img.shields.io/badge/auto--detect-Python-3776AB?style=flat-square&logo=python&logoColor=white">
-  <img alt="Architecture discovery: Rails" src="https://img.shields.io/badge/architecture_discovery-Rails-CC0000?style=flat-square&logo=rubyonrails&logoColor=white">
 </p>
 
 <p align="center">
@@ -151,13 +150,12 @@ flowchart LR
 | `/oc-init` | Sinh lại `context.yaml` từ settings có sẵn + scan docs và source |
 | `/oc-resolve <task>` | Debug routing — full resolver output, kể cả domain dưới ngưỡng |
 | `/oc-validate` | Phrasing coverage + amplification safety check trên `context.yaml` |
-| `/oc-validate-architecture` | Quét tĩnh 6 HMVC compliance rule (R1–R6) trên codebase Rails |
 
 ---
 
 ## Xem thêm
 
-- [`docs/reference.md`](docs/reference.md) *(tiếng Anh)* — chi tiết automated discovery, schema `context.yaml`, rule của architecture validator, limitations, các caveat chưa được đo
+- [`docs/reference.md`](docs/reference.md) *(tiếng Anh)* — chi tiết automated discovery, schema `context.yaml`, limitations, các caveat chưa được đo
 - [`docs/open-context-v0-architecture.md`](docs/open-context-v0-architecture.md) *(tiếng Anh)* — phương pháp benchmark
 - [`examples/rails-hmvc-sample/`](examples/rails-hmvc-sample/) — project reference 3 domain đầy đủ
 

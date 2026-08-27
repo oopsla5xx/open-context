@@ -18,7 +18,6 @@
   <img alt="Auto-detect: Ruby" src="https://img.shields.io/badge/auto--detect-Ruby-CC342D?style=flat-square&logo=ruby&logoColor=white">
   <img alt="Auto-detect: Node.js" src="https://img.shields.io/badge/auto--detect-Node.js-339933?style=flat-square&logo=node.js&logoColor=white">
   <img alt="Auto-detect: Python" src="https://img.shields.io/badge/auto--detect-Python-3776AB?style=flat-square&logo=python&logoColor=white">
-  <img alt="Architecture discovery: Rails" src="https://img.shields.io/badge/architecture_discovery-Rails-CC0000?style=flat-square&logo=rubyonrails&logoColor=white">
 </p>
 
 <p align="center">
@@ -151,13 +150,12 @@ flowchart LR
 | `/oc-init` | Regenerate `context.yaml` from existing settings + a scan of docs and source |
 | `/oc-resolve <task>` | Debug routing — full resolver output, including domains below threshold |
 | `/oc-validate` | Phrasing coverage + amplification safety check across `context.yaml` |
-| `/oc-validate-architecture` | Static scan of 6 HMVC compliance rules (R1–R6) on Rails code |
 
 ---
 
 ## Learn more
 
-- [`docs/reference.md`](docs/reference.md) — automated discovery detail, `context.yaml` schema, architecture validator rules, limitations, known unmeasured caveats
+- [`docs/reference.md`](docs/reference.md) — automated discovery detail, `context.yaml` schema, limitations, known unmeasured caveats
 - [`docs/open-context-v0-architecture.md`](docs/open-context-v0-architecture.md) — benchmark methodology
 - [`examples/rails-hmvc-sample/`](examples/rails-hmvc-sample/) — working 3-domain reference project
 

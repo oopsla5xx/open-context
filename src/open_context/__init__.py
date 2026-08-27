@@ -9,7 +9,7 @@ Quick start:
 """
 
 from .resolver import load_context, resolve, format_report, domains_by_path, format_drift_report
-from .validator import run_phrasing_tests, run_amplification_checks, run_arch_validate
+from .validator import run_phrasing_tests, run_amplification_checks
 from .schema import validate_context
 from .discovery import detect
 
@@ -21,7 +21,6 @@ __all__ = [
     "format_drift_report",
     "run_phrasing_tests",
     "run_amplification_checks",
-    "run_arch_validate",
     "validate_context",
     "detect",
 ]

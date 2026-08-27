@@ -9,19 +9,11 @@ Commands:
   validate --context PATH [--tests PATH] [--repo PATH] [--strict] [--json]
       Run phrasing coverage + amplification safety + file-existence check.
 
-  architecture validate [--repo PATH] [--path DIR] [--json]
-      Run 6 HMVC architecture compliance rules against the codebase.
-
   detect [--repo PATH] [--json]
       Detect language/framework/version/package-manager/database/ORM/test
       framework from structured config files (Gemfile, package.json,
       pyproject.toml/requirements.txt), with a per-field confidence score.
       Non-recursive: only reads files directly under --repo.
-
-  architecture discover [--repo PATH] [--app-dir DIR] [--json]
-      Discover the REAL component chain (Rails-family apps) by scanning
-      app/ for directories and call-evidence between them — not a fixed
-      archetype. Proposes a chain + confidence; never writes context.yaml.
 """
 
 import sys
@@ -32,10 +24,9 @@ from pathlib import Path
 import yaml
 
 from .resolver import load_context, resolve, format_report
-from .validator import run_phrasing_tests, run_amplification_checks, run_arch_validate, check_file_existence
+from .validator import run_phrasing_tests, run_amplification_checks, check_file_existence
 from .schema import validate_context
 from .discovery import detect
-from .architecture_discovery import discover_architecture, assess_confidence
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -205,121 +196,6 @@ def cmd_validate(args):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# architecture validate
-# ─────────────────────────────────────────────────────────────────────────────
-
-def cmd_arch_validate(args):
-    base = Path(args.repo).resolve() if args.repo else Path.cwd()
-    path_filter = Path(args.path).resolve() if args.path else None
-    sep = "─" * 72
-
-    print(sep)
-    print("open-context architecture validate")
-    print(f"Scope: {path_filter or base}")
-    print(sep)
-
-    report = run_arch_validate(base, path_filter)
-    total_violations = report["total_violations"]
-    total_files_checked = report["total_files_checked"]
-
-    print()
-    for result in report["results"]:
-        rule = result["rule"]
-        vcount = sum(len(v["hits"]) for v in result["violations"])
-        status = "✓" if vcount == 0 else "✗"
-        print(f"  {status} [{rule['id']}] {rule['name']}")
-        if vcount > 0:
-            for rv in result["violations"]:
-                for hit in rv["hits"]:
-                    loc = f":{hit['line']}" if hit["line"] else ""
-                    print(f"      File: {rv['file']}{loc}")
-                    if hit["code"]:
-                        print(f"      Code: {hit['code'].strip()}")
-                    print(f"      Issue: {hit['detail']}")
-                    print()
-
-    print(sep)
-    checked_label = f"{total_files_checked} files checked"
-    if total_violations == 0:
-        print(f"RESULT  ✓ All rules PASS  ({checked_label})")
-    else:
-        print(f"RESULT  ✗ {total_violations} violation(s) found  ({checked_label})")
-    print(sep)
-
-    if args.json:
-        print(json.dumps({
-            "scope": report["scope"],
-            "total_violations": total_violations,
-            "results": [
-                {
-                    "id": r["rule"]["id"],
-                    "name": r["rule"]["name"],
-                    "files_checked": r["files_checked"],
-                    "violations": r["violations"],
-                }
-                for r in report["results"]
-            ],
-        }, indent=2, default=str))
-
-    if total_violations > 0:
-        sys.exit(1)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# architecture discover
-# ─────────────────────────────────────────────────────────────────────────────
-
-def cmd_arch_discover(args):
-    base = Path(args.repo).resolve() if args.repo else Path.cwd()
-    result = discover_architecture(base, app_subdir=args.app_dir)
-    sep = "─" * 72
-
-    print(sep)
-    print(f"open-context architecture discover — {result['repo']} ({result['app_subdir']}/)")
-    print(sep)
-
-    if not result["components"]:
-        print(f"\n  {result.get('note', 'no components found')}")
-    else:
-        print(f"\n  {'Component':<16} {'.rb files':>9}  {'external?':<10}")
-        print("  " + "-" * 40)
-        for name, count in result["components"].items():
-            ext = "external" if name in result["external_components"] else ""
-            print(f"  {name:<16} {count:>9}  {ext:<10}")
-
-        print(f"\n  Suggested flow: {' -> '.join(result['suggested_flow']) or '(no connected components)'}")
-        if result["cycle_detected"]:
-            print(f"  ⚠ Cycle detected among: {', '.join(result['cycle_detected'])} — "
-                  f"order among these is not linear, reported as-is")
-        if result["entry_candidates"]:
-            print(f"  Entry candidate(s): {', '.join(result['entry_candidates'])}")
-        if result["terminal_candidates"]:
-            print(f"  Terminal candidate(s): {', '.join(result['terminal_candidates'])}")
-        if result["unconnected"]:
-            print(f"  Unconnected (no call-evidence in or out): {', '.join(result['unconnected'])}")
-
-        print(f"\n  {'Edge':<28} {'Confidence':>10}  {'Evidence'}")
-        print("  " + "-" * 64)
-        for e in result["edges"]:
-            edge_label = f"{e['from']} -> {e['to']}"
-            print(f"  {edge_label:<28} {e['confidence']:>9.0%}  {e['matched_files']}/{e['total_files']} files")
-
-        assessment = assess_confidence(result)
-        print()
-        if assessment["propose"]:
-            print("  PROPOSE: yes — suggested flow above is a reasonable proposal")
-        else:
-            print("  PROPOSE: no — ask directly instead of proposing a flow")
-            for reason in assessment["reasons"]:
-                print(f"    - {reason}")
-
-    print(sep)
-
-    if args.json:
-        print(json.dumps(result, indent=2, default=str))
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # detect
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -394,7 +270,7 @@ def _load_and_validate(context_path: str) -> dict:
 def main():
     parser = argparse.ArgumentParser(
         prog="open-context",
-        description="Open:Context CLI — context resolver (any framework) + Rails HMVC architecture validator",
+        description="Open:Context CLI — context resolver (any framework)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -418,29 +294,6 @@ def main():
                             help="Exit 1 if any paths are missing or phrasing risk is MEDIUM/HIGH")
     p_validate.add_argument("--json", action="store_true", help="Also print JSON results")
     p_validate.set_defaults(func=cmd_validate)
-
-    # architecture
-    p_arch = sub.add_parser("architecture", help="Architecture compliance checks")
-    arch_sub = p_arch.add_subparsers(dest="arch_command", required=True)
-
-    p_arch_val = arch_sub.add_parser("validate", help="Run 6 HMVC architecture rules against codebase")
-    p_arch_val.add_argument("--repo", metavar="PATH", default=None,
-                            help="Rails repo root to scan (default: current directory)")
-    p_arch_val.add_argument("--path", metavar="DIR", default=None,
-                            help="Limit scan to this subdirectory")
-    p_arch_val.add_argument("--json", action="store_true", help="Also print JSON results")
-    p_arch_val.set_defaults(func=cmd_arch_validate)
-
-    p_arch_disc = arch_sub.add_parser(
-        "discover",
-        help="Discover the real component chain from app/ call-evidence (proposal only, never writes context.yaml)",
-    )
-    p_arch_disc.add_argument("--repo", metavar="PATH", default=None,
-                             help="Repo root to scan (default: current directory)")
-    p_arch_disc.add_argument("--app-dir", metavar="DIR", default="app",
-                             help="Subdirectory to scan for components (default: app)")
-    p_arch_disc.add_argument("--json", action="store_true", help="Also print JSON results")
-    p_arch_disc.set_defaults(func=cmd_arch_discover)
 
     # detect
     p_detect = sub.add_parser("detect", help="Detect stack (language/framework/version/db/orm/tests)")

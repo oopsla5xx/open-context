@@ -26,9 +26,7 @@ echo '{"tool_name":"Edit","tool_input":{"file_path":"/path/to/project/app/models
 # CLI (after pip install -e ., or PYTHONPATH="src:vendor" python3 -m open_context.cli ...)
 open-context resolve "renew book loan" --context examples/rails-hmvc-sample/context.yaml
 open-context validate --context examples/rails-hmvc-sample/context.yaml --tests examples/rails-hmvc-sample/tests/
-open-context architecture validate --repo /path/to/rails-project
 open-context detect --repo /path/to/project                    # Phase 4a — stack detection (Ruby/Node/Python)
-open-context architecture discover --repo /path/to/rails-project  # Phase 4b — component-chain discovery (Rails only)
 # All CLI commands accept --json
 ```
 
@@ -60,16 +58,16 @@ This repo is both the CLI package (`src/open_context/`) and the Claude Code plug
 | `scripts/drift_hook.py` | PreToolUse (`Edit`\|`Write`) hook — detects domain drift mid-turn, injects that domain's rules/patterns |
 | `scripts/drift_hook.sh` | Shell entrypoint for the drift hook |
 | `hooks/hooks.json` | Registers all three hooks |
-| `.claude/skills/` | Five skills: `/oc-setup`, `/oc-init`, `/oc-resolve`, `/oc-validate`, `/oc-validate-architecture` |
+| `.claude/skills/` | Four skills: `/oc-setup`, `/oc-init`, `/oc-resolve`, `/oc-validate` |
 | `.claude-plugin/plugin.json` | Plugin manifest (version, hooks path, skills path) |
 | `vendor/yaml/` | Vendored PyYAML 6.0.3 — pure Python only, MIT license in `vendor/PYYAML_LICENSE` |
 | `tests/test_hook_integration.py` | Integration tests — run hooks as real subprocesses |
-| `tests/test_discovery.py`, `tests/test_architecture_discovery.py` | Unit tests (direct import, not subprocess) for Phase 4a/4b discovery modules |
+| `tests/test_discovery.py` | Unit tests (direct import, not subprocess) for Phase 4a discovery module |
 | `examples/rails-hmvc-sample/` | Working 3-domain reference: library management API |
 
 ## Plugin Architecture
 
-Three hooks, five skills. `CLAUDE_PLUGIN_ROOT` (set by Claude Code) locates `src/` and `vendor/` at runtime — no `pip install` needed for the hook path.
+Three hooks, four skills. `CLAUDE_PLUGIN_ROOT` (set by Claude Code) locates `src/` and `vendor/` at runtime — no `pip install` needed for the hook path.
 
 ### SessionStart hook (`session_hook.py`)
 
@@ -107,22 +105,20 @@ Gated by `domain_drift_detection` in `oc-settings.yaml`/`settings.json` (`hook_u
 
 | Skill | What it does |
 |-------|--------------|
-| `oc-setup` | Phase 0 runs `detect` (+ `architecture discover` if Ruby/Rails) to pre-fill answers with real evidence, never auto-written → wizard (up to 7 questions) → generates settings + `context.yaml` + test files → validate loop (patch → retest → ask, max 3 rounds) |
+| `oc-setup` | Phase 0 runs `detect` to pre-fill Question 3 with real evidence, never auto-written → wizard (up to 6 questions, architecture asked blind) → generates settings + `context.yaml` + test files → validate loop (patch → retest → ask, max 3 rounds) |
 | `oc-init` | Reads existing settings, scans docs/code, generates `context.yaml` + tests, validates |
 | `oc-resolve` | Debug routing for a given task — shows all domain scores including below-threshold |
 | `oc-validate` | Phrasing coverage + amplification safety check |
-| `oc-validate-architecture` | Static scan of 6 HMVC rules (R1–R6) via regex on Rails source |
 
 ## Source Layout (`src/open_context/`)
 
 | File | Responsibility |
 |------|---------------|
 | `resolver.py` | Core routing: tokenize → score → filter → match subtypes → build component chain → infer files. Also `domains_by_path()` (path → domain reverse-lookup) and `format_drift_report()`, used by the drift hook, not the prompt-time flow |
-| `validator.py` | Phrasing coverage validator (runs `resolve()` on `.txt` test files) + HMVC architecture rule checker |
-| `cli.py` | Subcommands: `resolve`, `validate`, `architecture validate`, `detect`, `architecture discover`. Core functions return plain dicts; CLI formats and sets exit codes. |
+| `validator.py` | Phrasing coverage validator (runs `resolve()` on `.txt` test files) + amplification safety + file-existence checks |
+| `cli.py` | Subcommands: `resolve`, `validate`, `detect`. Core functions return plain dicts; CLI formats and sets exit codes. |
 | `schema.py` | Validates `context.yaml` structure before any resolution |
 | `discovery.py` | Phase 4a — stack detection (Ruby/Node/Python), per-field confidence + source, never blended into one score |
-| `architecture_discovery.py` | Phase 4b — Rails-only component-chain discovery via real call-evidence in `app/`, never a fixed archetype |
 
 ### Resolution Algorithm
 
@@ -149,19 +145,15 @@ Canonical reference: `examples/rails-hmvc-sample/context.yaml`.
 
 ## Phase 4 — Automated Discovery
 
-Two independent, deterministic detectors that feed `/oc-setup`'s wizard — neither ever writes `context.yaml` directly; that only happens after the wizard's explicit approval in Phase 3.
+**4a — Stack detection (`discovery.py`)**: Ruby (Gemfile), Node (package.json), Python (pyproject.toml/requirements.txt) only — scope is bounded to what has real ground truth to verify against (`qlear-v2-admin`/`qlear-v2-bot`, `rush86999/atom`), not the full list in the original spec (Go/Java/etc. have no verified detector yet). Non-recursive — reads only the given `--repo` path, one ecosystem-manifest scan per call; a monorepo with multiple ecosystems (e.g. a Python `backend/` next to a Next.js `frontend-nextjs/`) needs one `detect` call per subdirectory. Every field carries its own `{value, confidence, source}` — deliberately not blended into one score, since a field from a structured manifest (near-certain) and one recovered from CLAUDE.md/README prose (much less certain) are not comparable. Never writes `context.yaml` directly; that only happens after the wizard's explicit approval in Phase 3.
 
-**4a — Stack detection (`discovery.py`)**: Ruby (Gemfile), Node (package.json), Python (pyproject.toml/requirements.txt) only — scope is bounded to what has real ground truth to verify against (`qlear-v2-admin`/`qlear-v2-bot`, `rush86999/atom`), not the full list in the original spec (Go/Java/etc. have no verified detector yet). Non-recursive — reads only the given `--repo` path, one ecosystem-manifest scan per call; a monorepo with multiple ecosystems (e.g. a Python `backend/` next to a Next.js `frontend-nextjs/`) needs one `detect` call per subdirectory. Every field carries its own `{value, confidence, source}` — deliberately not blended into one score, since a field from a structured manifest (near-certain) and one recovered from CLAUDE.md/README prose (much less certain) are not comparable.
-
-**4b — Architecture discovery (`architecture_discovery.py`)**: Rails-family apps only this round (no verified ground truth for other frameworks yet). Scans `app/` for real component directories and regex-based call-evidence between them (AST-lite, no AST engine) — never assumes a fixed 5-step HMVC chain; a real repo can turn out to use `admin → operation → form → model` with no serializer. Symlinked directories (e.g. a `shared/` submodule) are still scanned for call-evidence but flagged `external` rather than silently treated as owned code. `suggested_flow` is a full topological order (every connected component included, even ones in a cycle) — not a single greedy walk, which was found to silently drop real fan-out during validation. Whether to *propose* the discovered chain to the user is a small set of discrete red flags (zero edges; a cycle covering ≥50% of connected components), not a blended confidence score against a threshold — every weighted-penalty formula tried during development scored the hand-verified-correct `qlear-v2-admin` case at ~69%, just under a 70% cutoff, because it conflated real structural richness (multiple legitimate entry points) with detection uncertainty.
-
-`/oc-setup` Phase 0 runs both, then folds results into its wizard questions: Question 3 (stack) uses one batch-confirm line since near-certain fields don't warrant per-field friction; Question 4 (architecture) uses the heavier Yes/Review/Select-another/Custom gate, because that is the one answer that is both genuinely uncertain and expensive to get wrong. `oc-init` and `oc-setup` both got an overwrite guard (ask `[y/N]` before clobbering an existing settings file or `context.yaml`) as part of this work — an unrelated silent-data-loss bug found while auditing the write paths, not a Phase 4 feature.
+`/oc-setup` Phase 0 runs 4a and folds the result into Question 3 as one batch-confirm line, since near-certain fields don't warrant per-field friction. Question 4 (architecture pattern) is asked blind — the Rails-only architecture-discovery detector that used to pre-fill it (formerly "4b") was removed as part of the pivot away from Rails-specific tooling; a docs-first replacement is tracked separately (see `tasks/plan.md`). `oc-init` and `oc-setup` both got an overwrite guard (ask `[y/N]` before clobbering an existing settings file or `context.yaml`) as part of earlier work — an unrelated silent-data-loss bug found while auditing the write paths, not a Phase 4 feature.
 
 ## Local-only config (`.open-context/`)
 
 Everything `/oc-setup`/`/oc-init` generate — `context.yaml`, `oc-settings.yaml`, `tests/` — lives under `.open-context/` in the target project and is gitignored (both skills add a `.open-context/` entry to the project's `.gitignore` before writing). This is a deliberate product pivot: routing config is **local to each developer's machine**, not shared with the team via git. Each teammate who wants routing runs `/oc-setup` themselves.
 
-This is why the GitHub Actions CI feature (a wizard question + a Phase that generated `.github/workflows/open-context-validate.yml`) was removed entirely, not just made optional: GitHub only runs workflows that are committed, and a CI checkout only has what git tracked — a gitignored `context.yaml`/`tests/` means there is nothing for `open-context validate` to see in CI. The underlying CLI (`open-context validate --strict`, `open-context architecture validate`) still works standalone; a user who wants CI back can commit `.open-context/` themselves and wire the CLI into their own workflow, but the wizard no longer offers to generate one by default.
+This is why the GitHub Actions CI feature (a wizard question + a Phase that generated `.github/workflows/open-context-validate.yml`) was removed entirely, not just made optional: GitHub only runs workflows that are committed, and a CI checkout only has what git tracked — a gitignored `context.yaml`/`tests/` means there is nothing for `open-context validate` to see in CI. The underlying CLI (`open-context validate --strict`) still works standalone; a user who wants CI back can commit `.open-context/` themselves and wire the CLI into their own workflow, but the wizard no longer offers to generate one by default.
 
 **No backward compatibility** with the pre-this-change location (`.claude/context.yaml`, `.claude/oc-settings.yaml`, used by every released version through v0.1.9): this was a clean cutover, not a migration. Anyone who already ran `/oc-setup` under the old layout will look like a first-run project again and need to run `/oc-setup` again under `.open-context/`.
 

@@ -9,7 +9,7 @@ You are running the open-context first-run setup wizard. Execute all phases in o
 
 ## Phase 0 — Discovery (silent, runs before any question)
 
-Before asking anything, run automated detection so Question 3 and Question 4 can be pre-filled with real evidence instead of asked blind. Print nothing yet — results are folded into the relevant question below. If any step below fails or finds nothing, fall back silently to asking that question blind (no error, no partial pre-fill).
+Before asking anything, run automated detection so Question 3 can be pre-filled with real evidence instead of asked blind. Print nothing yet — results are folded into the relevant question below. If this step fails or finds nothing, fall back silently to asking that question blind (no error, no partial pre-fill).
 
 1. **Stack detection (4a).** Run:
    ```
@@ -20,12 +20,7 @@ Before asking anything, run automated detection so Question 3 and Question 4 can
 
    **If more than one ecosystem was detected** (e.g. a Rails app that also has a `package.json` for its JS asset pipeline, with no `framework` field found under Node — confirmed on qlear-v2-admin): prefer the ecosystem that has a detected `framework` value over one that doesn't — a repo's asset toolchain having a `package.json` doesn't make it "a Node project." If more than one ecosystem has a `framework` value, or none do, do not silently pick one — ask the user directly which ecosystem this question is about, listing what was found in each, before falling back to the blind flow below for that ecosystem.
 
-2. **Architecture discovery (4b — Ruby/Rails only this round).** Only run this if step 1 found `"ecosystem": "ruby"` with `framework.value` == `"Rails"` (or `"Rails"`-family — case-insensitive). For any other language/framework, skip this step entirely — 4b does not support Next.js or other patterns yet, and guessing outside Rails is exactly the un-verified risk this phase avoids. If it applies, run:
-   ```
-   PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/src:${CLAUDE_PLUGIN_ROOT}/vendor" \
-     python3 -m open_context.cli architecture discover --repo . --json
-   ```
-   Keep the result for Question 4. The result's `assess_confidence`-equivalent gate is printed in the human-readable (non-JSON) run as a `PROPOSE: yes/no` line with reasons — check that before deciding whether to pre-fill Question 4. If `PROPOSE: no`, Question 4 is asked blind as written below; do not show a rejected proposal to the user as if it were a real suggestion.
+> Architecture discovery (formerly Phase 0 step 2 / "4b") has been removed — it was Rails-only and never generalized. Question 4 below is always asked blind for now; a docs-first replacement is planned separately.
 
 ---
 
@@ -80,26 +75,9 @@ Then, based on the language chosen:
 
 **Question 4 — Architecture pattern**
 
-**This question never auto-writes anything — the detected chain below is a proposal, not a decision. `context.yaml` is only ever written in Phase 3, after this question resolves to an explicit Yes/Review→Yes/Select-another/Custom answer.**
+**This question never auto-writes anything — `context.yaml` is only ever written in Phase 3, after this question resolves to an explicit answer.**
 
-If Phase 0 step 2 ran and printed `PROPOSE: yes`, pre-fill with the real discovered chain — never a fixed archetype name (that is exactly the guessing this phase exists to avoid; a real repo can turn out to use a different chain than any of the 5 standard options below, e.g. `admin → operation → form → model` with no serializer, ActiveAdmin as the entry point instead of a plain controller):
-
-> Detected component chain (from real call-evidence in `app/`, not a template):
-> `<suggested_flow joined by " → ">`
-> Based on <N> discovered components, <M> call-evidence edges, no cycle detected.
-> [if entry_candidates has more than 1] Note: multiple entry points found (`<entry_candidates>`) — the chain above is one linear reading of a graph that actually fans out; see Review for the full picture.
-> [if external_components is non-empty] Note: `<external_components>` are defined in a shared/ submodule, not owned by this repo.
->
-> 1. Yes — use this chain as-is
-> 2. Review — see the full per-edge evidence (confidence + matched files) before deciding
-> 3. Select another — pick from the standard patterns below
-> 4. Custom — describe your own component chain
-
-- If **Yes**: use `suggested_flow` as `architecture.flow`, and the discovered `allowed_dependencies` (from the `--json` output) as each component's `allowed_dependencies` in Phase 3 — this data already reflects real call-evidence (which component actually calls which), so do not ask the Phase 3 LLM step to re-derive it from scratch. `forbidden_dependencies` is not derived from discovery — leave that to Phase 3's judgment as before, since "what should be forbidden" is a design-intent call the detector deliberately does not make. Any component in `external_components` keeps its place in the flow but its `context.yaml` responsibilities entry MUST note it is external (not owned by this repo, e.g. a `shared/` submodule) — never presented the same as a component the repo actually owns.
-- If **Review**: print the full edge table (`from -> to`, confidence %, `matched_files/total_files`, one or two example `file:line` hits per edge) plus `entry_candidates`, `terminal_candidates`, `unconnected`, `external_components` verbatim from the `--json` output. Then re-ask this same question (1/3/4 — Review is not a terminal answer, it feeds back into the choice with more information shown).
-- If **Select another** or **Custom**: discard the detected proposal entirely and proceed exactly as the blind flow below.
-
-If Phase 0 step 2 did not run (non-Rails, or no `app/` found) or printed `PROPOSE: no`, ask blind — do not show a rejected/skipped proposal as if it were a real suggestion, and do not guess at a confidence number to display:
+Always asked blind (see the note in Phase 0 — automated architecture discovery was removed):
 
 > What architectural pattern does this project follow?
 > 1. HMVC — controller → operation → form → model → serializer
