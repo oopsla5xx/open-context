@@ -30,14 +30,23 @@ jobs:
       - name: Install open-context
         run: pip install -e .
 
-      - name: Validate example context.yaml (phrasing + amplification)
+      - name: Validate rails-hmvc-sample context.yaml (phrasing + amplification)
         run: |
           open-context validate \
             --context examples/rails-hmvc-sample/context.yaml \
             --tests   examples/rails-hmvc-sample/tests/ \
             --repo    examples/rails-hmvc-sample/
 
-      - name: Validate example architecture rules
+      - name: Validate nextjs-sample context.yaml (phrasing + amplification)
         run: |
-          open-context architecture validate \
-            --repo examples/rails-hmvc-sample/
+          open-context validate \
+            --context examples/nextjs-sample/context.yaml \
+            --tests   examples/nextjs-sample/tests/ \
+            --repo    examples/nextjs-sample/
+
+      - name: Validate data-pipeline-sample context.yaml (phrasing + amplification)
+        run: |
+          open-context validate \
+            --context examples/data-pipeline-sample/context.yaml \
+            --tests   examples/data-pipeline-sample/tests/ \
+            --repo    examples/data-pipeline-sample/

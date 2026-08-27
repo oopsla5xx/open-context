@@ -260,4 +260,3 @@ def check_file_existence(ctx: dict, repo_root: "Path | str") -> dict:
         "total_missing": total_missing,
         "repo_mismatch": total_declared > 0 and total_found == 0,
     }
-

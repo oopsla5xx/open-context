@@ -58,7 +58,10 @@ def discover_docs(repo: "Path | str") -> dict:
     Returns:
       {
         "repo": str,
-        "docs_found": [ {"path": "<repo-relative, forward-slash>", "kind": "README.md"|"CLAUDE.md"|"AGENTS.md"|"docs_md"} ]
+        "docs_found": [
+          {"path": "<repo-relative, forward-slash>",
+           "kind": "README.md"|"CLAUDE.md"|"AGENTS.md"|"docs_md"}
+        ]
       }
     """
     root = Path(repo).resolve()

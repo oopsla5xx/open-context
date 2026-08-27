@@ -388,8 +388,9 @@ def detect_go(repo: Path) -> dict | None:
     for module_prefix, framework_name, conf in _GO_FRAMEWORKS:
         m = re.search(re.escape(module_prefix) + r"(\S*)\s+v?([\d][\w.\-+]*)", text)
         if m:
-            fields["framework"] = _field(framework_name, conf, f"go.mod require `{module_prefix}{m.group(1)}`")
-            fields["framework_version"] = _field(m.group(2), conf, f"go.mod require `{module_prefix}{m.group(1)}` version")
+            source = f"go.mod require `{module_prefix}{m.group(1)}`"
+            fields["framework"] = _field(framework_name, conf, source)
+            fields["framework_version"] = _field(m.group(2), conf, f"{source} version")
             break
 
     fields["package_manager"] = _field(
@@ -411,18 +412,52 @@ _RUST_FRAMEWORKS = (
 )
 
 
+def _parse_cargo_toml_fallback(text: str) -> dict:
+    """Regex-based fallback for when tomllib is unavailable (stdlib only
+    from Python 3.11 — see _parse_pyproject's docstring for the same
+    constraint). Scoped per-[section], unlike a whole-file key=value scan,
+    so [package] keys (name, edition, rust-version, ...) never leak into
+    the dependency list. Only recovers plain string values and a bare
+    `version = "..."` out of an inline table — not full TOML semantics,
+    but enough for detect_rust's needs."""
+    sections: dict = {}
+    current = None
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        section_match = re.match(r"^\[([\w.\-]+)\]$", s)
+        if section_match:
+            current = section_match.group(1)
+            sections.setdefault(current, {})
+            continue
+        if current is None:
+            continue
+        kv_match = re.match(r"^([\w\-]+)\s*=\s*(.+)$", s)
+        if not kv_match:
+            continue
+        key, raw_value = kv_match.group(1), kv_match.group(2).strip()
+        if raw_value.startswith('"') and raw_value.endswith('"'):
+            sections[current][key] = raw_value[1:-1]
+        elif raw_value.startswith("{"):
+            vm = re.search(r'version\s*=\s*"([^"]+)"', raw_value)
+            sections[current][key] = {"version": vm.group(1)} if vm else {}
+        else:
+            sections[current][key] = raw_value
+    return sections
+
+
 def _parse_cargo_toml(text: str) -> dict:
     """Returns the parsed Cargo.toml as a dict via tomllib when available
     (see _parse_pyproject's docstring for why tomllib is imported here, not
-    at module top-level), falling back to an empty dict — the regex-based
-    per-field lookups below degrade gracefully on an empty dict, unlike
-    Python's requirements.txt fallback which has no structured alternative
-    to fall back to."""
+    at module top-level), falling back to _parse_cargo_toml_fallback on
+    Python <3.11 or malformed TOML — same shape either way, so callers
+    never need to know which path produced it."""
     try:
         import tomllib  # pylint: disable=import-outside-toplevel,import-error
         return tomllib.loads(text)
     except Exception:  # pylint: disable=broad-exception-caught
-        return {}
+        return _parse_cargo_toml_fallback(text)
 
 
 def detect_rust(repo: Path) -> dict | None:
@@ -440,16 +475,17 @@ def detect_rust(repo: Path) -> dict | None:
         fields["language_version"] = _field(str(rust_version), 0.95, "Cargo.toml `package.rust-version`")
 
     deps = {**data.get("dependencies", {}), **data.get("dev-dependencies", {})}
-    if not deps:
-        # tomllib unavailable/failed to parse — fall back to a crude regex scan,
-        # same posture as detect_python's fallback: presence, not version.
-        deps = {m.group(1).lower(): None for m in re.finditer(r'^([A-Za-z0-9_\-]+)\s*=', text, re.M)}
 
     for dep_name, framework_name, conf in _RUST_FRAMEWORKS:
         if dep_name in deps:
             fields["framework"] = _field(framework_name, conf, f"Cargo.toml dependency `{dep_name}`")
             dep_value = deps[dep_name]
-            version = dep_value if isinstance(dep_value, str) else (dep_value or {}).get("version") if isinstance(dep_value, dict) else None
+            if isinstance(dep_value, str):
+                version = dep_value
+            elif isinstance(dep_value, dict):
+                version = dep_value.get("version")
+            else:
+                version = None
             if version:
                 fields["framework_version"] = _field(str(version), conf, f"Cargo.toml `{dep_name}` version")
             break
@@ -505,10 +541,10 @@ def _detect_java_gradle(repo: Path) -> dict | None:
         return None
 
     text = gradle_path.read_text(errors="ignore")
-    is_kotlin_dsl = name.endswith(".kts")
     has_kotlin_plugin = bool(re.search(r'kotlin\(["\']jvm["\']\)|org\.jetbrains\.kotlin\.jvm', text))
     language = "Kotlin" if has_kotlin_plugin else "Java"
-    fields: dict = {"language": _field(language, 0.85, f"{name} present" + (" + Kotlin JVM plugin" if has_kotlin_plugin else ""))}
+    language_source = f"{name} present" + (" + Kotlin JVM plugin" if has_kotlin_plugin else "")
+    fields: dict = {"language": _field(language, 0.85, language_source)}
 
     m = re.search(r"sourceCompatibility\s*=\s*['\"]?(?:JavaVersion\.VERSION_)?([\d._]+)['\"]?", text)
     if m:
