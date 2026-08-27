@@ -15,13 +15,24 @@ PLUGIN_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PLUGIN_ROOT / "src"))
 sys.path.insert(0, str(PLUGIN_ROOT / "vendor"))
 
-from open_context.discovery import detect, detect_node, detect_python, detect_ruby  # noqa: E402
+from open_context.discovery import (  # noqa: E402
+    detect,
+    detect_go,
+    detect_java,
+    detect_node,
+    detect_python,
+    detect_ruby,
+    detect_rust,
+)
 
 
 def test_no_manifest_returns_none(tmp_path):
     assert detect_ruby(tmp_path) is None
     assert detect_node(tmp_path) is None
     assert detect_python(tmp_path) is None
+    assert detect_go(tmp_path) is None
+    assert detect_rust(tmp_path) is None
+    assert detect_java(tmp_path) is None
     result = detect(tmp_path)
     assert result["ecosystems"] == []
 
@@ -158,3 +169,87 @@ def test_detect_is_non_recursive(tmp_path):
 
     assert detect(tmp_path)["ecosystems"] == []
     assert detect(nested)["ecosystems"][0]["ecosystem"] == "python"
+
+
+def test_go_gin_happy_path(tmp_path):
+    (tmp_path / "go.mod").write_text(
+        "module github.com/example/api\n\n"
+        "go 1.21\n\n"
+        "require (\n"
+        "\tgithub.com/gin-gonic/gin v1.9.1\n"
+        ")\n"
+    )
+    (tmp_path / "go.sum").write_text("")
+
+    fields = detect_go(tmp_path)["fields"]
+    assert fields["language"]["value"] == "Go"
+    assert fields["language_version"]["value"] == "1.21"
+    assert fields["framework"]["value"] == "Gin"
+    assert fields["framework_version"]["value"] == "1.9.1"
+    assert fields["package_manager"]["value"] == "Go Modules"
+    assert fields["package_manager"]["confidence"] == 0.95
+
+
+def test_go_no_framework_still_detects_language(tmp_path):
+    (tmp_path / "go.mod").write_text("module example.com/tool\n\ngo 1.20\n")
+
+    fields = detect_go(tmp_path)["fields"]
+    assert fields["language"]["value"] == "Go"
+    assert "framework" not in fields
+    assert fields["package_manager"]["confidence"] == 0.7
+
+
+def test_rust_axum_happy_path(tmp_path):
+    (tmp_path / "Cargo.toml").write_text(
+        '[package]\nname = "api"\nversion = "0.1.0"\nrust-version = "1.75"\n\n'
+        '[dependencies]\naxum = "0.7"\ntokio = { version = "1", features = ["full"] }\n'
+    )
+    (tmp_path / "Cargo.lock").write_text("")
+
+    fields = detect_rust(tmp_path)["fields"]
+    assert fields["language"]["value"] == "Rust"
+    assert fields["language_version"]["value"] == "1.75"
+    assert fields["framework"]["value"] == "Axum"
+    assert fields["framework_version"]["value"] == "0.7"
+    assert fields["package_manager"]["value"] == "Cargo"
+    assert fields["package_manager"]["confidence"] == 0.95
+
+
+def test_java_maven_spring_boot_happy_path(tmp_path):
+    (tmp_path / "pom.xml").write_text(
+        "<project>\n"
+        "  <properties><java.version>17</java.version></properties>\n"
+        "  <dependencies>\n"
+        "    <dependency>\n"
+        "      <groupId>org.springframework.boot</groupId>\n"
+        "      <artifactId>spring-boot-starter-web</artifactId>\n"
+        "    </dependency>\n"
+        "  </dependencies>\n"
+        "</project>\n"
+    )
+
+    fields = detect_java(tmp_path)["fields"]
+    assert fields["language"]["value"] == "Java"
+    assert fields["language_version"]["value"] == "17"
+    assert fields["framework"]["value"] == "Spring Boot"
+    assert fields["package_manager"]["value"] == "Maven"
+
+
+def test_java_gradle_kotlin_ktor_happy_path(tmp_path):
+    (tmp_path / "build.gradle.kts").write_text(
+        'plugins {\n    kotlin("jvm") version "1.9.0"\n}\n\n'
+        'dependencies {\n    implementation("io.ktor:ktor-server-core:2.3.0")\n}\n'
+    )
+
+    fields = detect_java(tmp_path)["fields"]
+    assert fields["language"]["value"] == "Kotlin"
+    assert fields["framework"]["value"] == "Ktor"
+    assert fields["package_manager"]["value"] == "Gradle"
+
+
+def test_java_maven_preferred_over_gradle_when_both_present(tmp_path):
+    (tmp_path / "pom.xml").write_text("<project></project>\n")
+    (tmp_path / "build.gradle").write_text("dependencies {}\n")
+
+    result = detect_java(tmp_path)
+    assert result["fields"]["package_manager"]["value"] == "Maven"

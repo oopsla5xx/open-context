@@ -212,12 +212,12 @@ version directive; detect common frameworks (e.g. `gin-gonic/gin`,
 confidence-tiering pattern as `_NODE_FRAMEWORKS`.
 
 **Acceptance criteria:**
-- [ ] `detect_go()` returns `None` when no `go.mod` present
-- [ ] Returns `{"language": _field("Go", ...), "language_version": _field(...), ...}` shape matching existing ecosystems
-- [ ] Wired into `detect()`'s ecosystem list
+- [x] `detect_go()` returns `None` when no `go.mod` present
+- [x] Returns `{"language": _field("Go", ...), "language_version": _field(...), ...}` shape matching existing ecosystems
+- [x] Wired into `detect()`'s ecosystem list
 
 **Verification:**
-- [ ] Tests pass: `/usr/bin/env python3 -m pytest tests/test_discovery.py -v`
+- [x] Tests pass: `/usr/bin/env python3 -m pytest tests/test_discovery.py -v`
 
 **Dependencies:** None (independent of PR1/PR2)
 
@@ -235,12 +235,12 @@ Task 7. Parse `Cargo.toml` `[package]` for name/edition/rust-version,
 `[dependencies]` for common frameworks (`actix-web`, `axum`, `rocket`).
 
 **Acceptance criteria:**
-- [ ] `detect_rust()` returns `None` when no `Cargo.toml` present
-- [ ] Returns `{value, confidence, source}`-shaped fields matching existing ecosystems
-- [ ] Wired into `detect()`'s ecosystem list
+- [x] `detect_rust()` returns `None` when no `Cargo.toml` present
+- [x] Returns `{value, confidence, source}`-shaped fields matching existing ecosystems
+- [x] Wired into `detect()`'s ecosystem list
 
 **Verification:**
-- [ ] Tests pass: `/usr/bin/env python3 -m pytest tests/test_discovery.py -v`
+- [x] Tests pass: `/usr/bin/env python3 -m pytest tests/test_discovery.py -v`
 
 **Dependencies:** None
 
@@ -260,12 +260,12 @@ extract group/artifact/Java version where available, detect
 Spring Boot/Ktor from dependency declarations.
 
 **Acceptance criteria:**
-- [ ] `detect_java()` returns `None` when neither `pom.xml` nor `build.gradle*` present
-- [ ] Handles both Maven and Gradle inputs, each producing the same field shape
-- [ ] Wired into `detect()`'s ecosystem list
+- [x] `detect_java()` returns `None` when neither `pom.xml` nor `build.gradle*` present
+- [x] Handles both Maven and Gradle inputs, each producing the same field shape (note: `pom.xml` parsed via regex, not a real XML parser — mirrors the codebase's existing pragmatic-regex style used for Gemfile/go.mod rather than pulling in `xml.etree`, sufficient for group-id/version-property extraction)
+- [x] Wired into `detect()`'s ecosystem list; Maven preferred over Gradle when both present (mirrors `detect_python`'s pyproject-over-requirements preference)
 
 **Verification:**
-- [ ] Tests pass: `/usr/bin/env python3 -m pytest tests/test_discovery.py -v`
+- [x] Tests pass: `/usr/bin/env python3 -m pytest tests/test_discovery.py -v`
 
 **Dependencies:** None
 
@@ -277,8 +277,8 @@ Spring Boot/Ktor from dependency declarations.
 ---
 
 ## Checkpoint: PR3 complete
-- [ ] `/usr/bin/env python3 -m pytest tests/test_discovery.py -v` passes, including new Go/Rust/Java cases
-- [ ] All three new detectors follow the `{value, confidence, source}` per-field shape, never blended
+- [x] `/usr/bin/env python3 -m pytest tests/ -v` passes (56/56, full suite; 17/17 in test_discovery.py)
+- [x] All three new detectors follow the `{value, confidence, source}` per-field shape, never blended
 - [ ] Review with human before starting PR4
 
 ---

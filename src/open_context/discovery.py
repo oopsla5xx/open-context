@@ -2,8 +2,9 @@
 Open:Context — Phase 4a stack discovery.
 
 Deterministic detectors for language/framework/version/package-manager/
-database/ORM/test-framework, one per ecosystem (Ruby, Node, Python). No LLM
-calls — same "zero-LLM core" principle as resolver.py/validator.py.
+database/ORM/test-framework, one per ecosystem (Ruby, Node, Python, Go,
+Rust, Java). No LLM calls — same "zero-LLM core" principle as
+resolver.py/validator.py.
 
 Each detected field is returned as {"value", "confidence", "source"} rather
 than a single blended score: a field read from a structured manifest
@@ -362,10 +363,182 @@ def detect_python(repo: Path) -> dict | None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Go
+# ─────────────────────────────────────────────────────────────────────────────
+
+_GO_FRAMEWORKS = (
+    ("github.com/gin-gonic/gin", "Gin", 0.9),
+    ("github.com/labstack/echo", "Echo", 0.9),
+    ("github.com/gofiber/fiber", "Fiber", 0.9),
+)
+
+
+def detect_go(repo: Path) -> dict | None:
+    gomod = repo / "go.mod"
+    if not gomod.is_file():
+        return None
+
+    text = gomod.read_text(errors="ignore")
+    fields: dict = {"language": _field("Go", 0.99, "go.mod present")}
+
+    m = re.search(r"^go\s+([\d.]+)", text, re.M)
+    if m:
+        fields["language_version"] = _field(m.group(1), 0.97, "go.mod `go` directive")
+
+    for module_prefix, framework_name, conf in _GO_FRAMEWORKS:
+        m = re.search(re.escape(module_prefix) + r"(\S*)\s+v?([\d][\w.\-+]*)", text)
+        if m:
+            fields["framework"] = _field(framework_name, conf, f"go.mod require `{module_prefix}{m.group(1)}`")
+            fields["framework_version"] = _field(m.group(2), conf, f"go.mod require `{module_prefix}{m.group(1)}` version")
+            break
+
+    fields["package_manager"] = _field(
+        "Go Modules", 0.95 if (repo / "go.sum").is_file() else 0.7,
+        "go.sum present" if (repo / "go.sum").is_file() else "go.mod present (no go.sum)"
+    )
+
+    return {"ecosystem": "go", "fields": fields}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rust
+# ─────────────────────────────────────────────────────────────────────────────
+
+_RUST_FRAMEWORKS = (
+    ("actix-web", "Actix Web", 0.9),
+    ("axum", "Axum", 0.9),
+    ("rocket", "Rocket", 0.9),
+)
+
+
+def _parse_cargo_toml(text: str) -> dict:
+    """Returns the parsed Cargo.toml as a dict via tomllib when available
+    (see _parse_pyproject's docstring for why tomllib is imported here, not
+    at module top-level), falling back to an empty dict — the regex-based
+    per-field lookups below degrade gracefully on an empty dict, unlike
+    Python's requirements.txt fallback which has no structured alternative
+    to fall back to."""
+    try:
+        import tomllib  # pylint: disable=import-outside-toplevel,import-error
+        return tomllib.loads(text)
+    except Exception:  # pylint: disable=broad-exception-caught
+        return {}
+
+
+def detect_rust(repo: Path) -> dict | None:
+    cargo_path = repo / "Cargo.toml"
+    if not cargo_path.is_file():
+        return None
+
+    text = cargo_path.read_text(errors="ignore")
+    data = _parse_cargo_toml(text)
+    fields: dict = {"language": _field("Rust", 0.99, "Cargo.toml present")}
+
+    package = data.get("package", {})
+    rust_version = package.get("rust-version")
+    if rust_version:
+        fields["language_version"] = _field(str(rust_version), 0.95, "Cargo.toml `package.rust-version`")
+
+    deps = {**data.get("dependencies", {}), **data.get("dev-dependencies", {})}
+    if not deps:
+        # tomllib unavailable/failed to parse — fall back to a crude regex scan,
+        # same posture as detect_python's fallback: presence, not version.
+        deps = {m.group(1).lower(): None for m in re.finditer(r'^([A-Za-z0-9_\-]+)\s*=', text, re.M)}
+
+    for dep_name, framework_name, conf in _RUST_FRAMEWORKS:
+        if dep_name in deps:
+            fields["framework"] = _field(framework_name, conf, f"Cargo.toml dependency `{dep_name}`")
+            dep_value = deps[dep_name]
+            version = dep_value if isinstance(dep_value, str) else (dep_value or {}).get("version") if isinstance(dep_value, dict) else None
+            if version:
+                fields["framework_version"] = _field(str(version), conf, f"Cargo.toml `{dep_name}` version")
+            break
+
+    fields["package_manager"] = _field(
+        "Cargo", 0.95 if (repo / "Cargo.lock").is_file() else 0.7,
+        "Cargo.lock present" if (repo / "Cargo.lock").is_file() else "Cargo.toml present (no Cargo.lock)"
+    )
+
+    return {"ecosystem": "rust", "fields": fields}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Java (Maven / Gradle)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_JAVA_FRAMEWORKS = (
+    ("org.springframework.boot", "Spring Boot", 0.9),
+    ("io.ktor", "Ktor", 0.9),
+)
+
+
+def _detect_java_maven(repo: Path) -> dict | None:
+    pom_path = repo / "pom.xml"
+    if not pom_path.is_file():
+        return None
+
+    text = pom_path.read_text(errors="ignore")
+    fields: dict = {"language": _field("Java", 0.9, "pom.xml present")}
+
+    m = re.search(r"<(?:java\.version|maven\.compiler\.(?:source|target))>([\d.]+)<", text)
+    if m:
+        fields["language_version"] = _field(m.group(1), 0.9, "pom.xml compiler/java version property")
+
+    for group_id, framework_name, conf in _JAVA_FRAMEWORKS:
+        if group_id in text:
+            fields["framework"] = _field(framework_name, conf, f"pom.xml dependency groupId `{group_id}`")
+            break
+
+    fields["package_manager"] = _field(
+        "Maven", 0.95 if (repo / "mvnw").is_file() else 0.85, "pom.xml present"
+    )
+
+    return {"ecosystem": "java", "fields": fields}
+
+
+def _detect_java_gradle(repo: Path) -> dict | None:
+    for name in ("build.gradle.kts", "build.gradle"):
+        gradle_path = repo / name
+        if gradle_path.is_file():
+            break
+    else:
+        return None
+
+    text = gradle_path.read_text(errors="ignore")
+    is_kotlin_dsl = name.endswith(".kts")
+    has_kotlin_plugin = bool(re.search(r'kotlin\(["\']jvm["\']\)|org\.jetbrains\.kotlin\.jvm', text))
+    language = "Kotlin" if has_kotlin_plugin else "Java"
+    fields: dict = {"language": _field(language, 0.85, f"{name} present" + (" + Kotlin JVM plugin" if has_kotlin_plugin else ""))}
+
+    m = re.search(r"sourceCompatibility\s*=\s*['\"]?(?:JavaVersion\.VERSION_)?([\d._]+)['\"]?", text)
+    if m:
+        fields["language_version"] = _field(m.group(1).replace("_", "."), 0.75, f"{name} `sourceCompatibility`")
+
+    for group_id, framework_name, conf in _JAVA_FRAMEWORKS:
+        if group_id in text:
+            fields["framework"] = _field(framework_name, conf, f"{name} dependency `{group_id}`")
+            break
+
+    fields["package_manager"] = _field(
+        "Gradle", 0.95 if (repo / "gradlew").is_file() else 0.85, f"{name} present"
+    )
+
+    return {"ecosystem": "java", "fields": fields}
+
+
+def detect_java(repo: Path) -> dict | None:
+    """Maven (pom.xml) and Gradle (build.gradle/build.gradle.kts) are mutually
+    exclusive build tools for a given module — checked in that order, first
+    match wins, mirroring detect_python's pyproject-then-requirements
+    preference rather than merging fields from both."""
+    return _detect_java_maven(repo) or _detect_java_gradle(repo)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ─────────────────────────────────────────────────────────────────────────────
 
-_DETECTORS = (detect_ruby, detect_node, detect_python)
+_DETECTORS = (detect_ruby, detect_node, detect_python, detect_go, detect_rust, detect_java)
 
 
 def detect(repo_path: "Path | str") -> dict:
