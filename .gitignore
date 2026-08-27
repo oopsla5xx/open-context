@@ -13,3 +13,6 @@ build/
 .tmp-nextjs-sample/
 
 notebooks/
+
+# open-context — local-only per developer, not shared via git
+.open-context/

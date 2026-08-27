@@ -504,12 +504,12 @@ all 4 other PRs, not a duplicate of Task 3).
 
 ## Checkpoint: PR5 complete / final verification
 
-All 5 PRs' code/schema/skill-doc changes are committed (65/65 pytest passing throughout). **Not yet done** — the interactive dry run, which needs the user's real participation (the wizard asks real Yes/Edit/Regenerate questions, not something to self-simulate):
+All 5 PRs' code/schema/skill-doc changes are committed (65/65 pytest passing throughout). Live interactive dry run completed on 2026-08-27:
 
-- [ ] Run `/oc-setup` on ≥1 real repo with good docs — confirm generated `context.yaml`'s `source:` citations point at real files that were actually read
-- [ ] Run `/oc-setup` on ≥1 real repo with no AGENTS/CLAUDE/README/docs — confirm the code-reading fallback produces a usable `context.yaml` with `source:` pointing at code files
-- [ ] `open-context validate` passes on both generated files
-- [x] All acceptance criteria across PR1-PR5's code/doc tasks met (interactive dry-run tasks excepted, tracked above)
-- [ ] Release process (per CLAUDE.md) followed: CHANGELOG.md entry, version bump, tag, GitHub release — not started, waiting on the dry-run above first
+- [x] Ran `/oc-setup` on this repo itself (real docs: `CLAUDE.md`/`README.md`/`docs/reference.md`) — generated `.open-context/context.yaml` (4 domains, 4 rules), every `source:` cites `CLAUDE.md`, which was actually read. `architecture:` correctly omitted (no single layered chain — 3 hook entry points + CLI sharing a core module set). Caught and self-corrected one real content bug mid-run (`rule-04` missing `domain: [cli]`, was leaking into unrelated task resolutions) via Phase 5's iteration loop.
+- [x] Ran `/oc-setup` on a fresh scratch repo (`no-docs-sample`, Flask task API, zero README/CLAUDE/AGENTS/docs) — `discover-docs` confirmed `docs_found: []`, triggering the no-docs fallback: read `app.py`/`routes/`/`services/`/`models/` directly, correctly inferred a real `route → service → model` chain from actual import call-evidence, and surfaced a genuine finding from a code comment (`services/task_service.py`'s "No ownership check here on purpose" became `rule-02`). Every `source:` cites a code file, not a doc.
+- [x] `open-context validate --strict` passes on both: 17/17 phrasings (this repo), 8/8 phrasings (scratch repo), 0 schema errors, all declared `related_components` paths found on disk in both cases
+- [x] All acceptance criteria across PR1-PR5 met
+- [ ] Release process (per CLAUDE.md) followed: CHANGELOG.md entry, version bump, tag, GitHub release — not started; this dry run wrote `.open-context/` into this repo's own working tree (gitignored, not committed) purely for verification, separate from the release decision
 
-Partial substitute evidence already in hand: `examples/data-pipeline-sample/` is a hand-built but structurally faithful proof of the docs-first path (real `AGENTS.md`/`docs/rules/*.md` → `context.yaml` with accurate `source:` citations → validates clean) — it exercises the same schema/traceability machinery the live wizard will produce, just authored directly rather than through the interactive skill.
+`examples/data-pipeline-sample/` remains the committed, permanent reference example for the no-layer/docs-first case; the two dry runs above were ephemeral verification (this repo's `.open-context/` is gitignored, the scratch repo lives outside this repo entirely under the session scratchpad).
